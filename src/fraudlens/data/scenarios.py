@@ -4,8 +4,10 @@ Fraud scenarios are modelled on well-known real-world attack types:
 
 * card_testing      - a fraudster checks a stolen card number with many tiny online
                       payments, then makes a big purchase once the card is confirmed to work.
+                      Half of them appear to be in the UK (VPN / proxy).
 * account_takeover  - someone gains access to the customer's online account and buys
-                      high-value goods at night, from a new device in another country.
+                      high-value goods at night from a new device, usually from abroad
+                      (30% appear to be in the UK).
 * stolen_card_spree - the physical card is stolen and used in shops in another UK city
                       for several large purchases within a few hours.
 
@@ -46,6 +48,21 @@ def _random_foreign_city(rng: np.random.Generator) -> tuple[str, float, float]:
     return name, lat + rng.normal(0, 0.03), lon + rng.normal(0, 0.03)
 
 
+def _fraudster_location(rng: np.random.Generator, uk_share: float) -> tuple[float, float]:
+    """Where an online fraudster appears to be.
+
+    Many hide behind a UK VPN or proxy, so they look like they are in a UK city. Without
+    this, a model can learn the shortcut "online fraud always comes from abroad" and miss
+    every domestic attack (this exact shortcut was found by the Phase 4 explanations).
+    """
+    if rng.random() < uk_share:
+        names = list(UK_CITIES)
+        lat, lon = UK_CITIES[names[int(rng.integers(len(names)))]]
+        return lat + rng.normal(0, 0.03), lon + rng.normal(0, 0.03)
+    _, lat, lon = _random_foreign_city(rng)
+    return lat, lon
+
+
 def _fraudster_device(rng: np.random.Generator) -> str:
     return f"FD{int(rng.integers(1_000_000)):06d}"
 
@@ -54,7 +71,7 @@ def card_testing(
     customer: Customer, day: int, directory: MerchantDirectory, rng: np.random.Generator
 ) -> list[dict]:
     device = _fraudster_device(rng)
-    _, lat, lon = _random_foreign_city(rng)
+    lat, lon = _fraudster_location(rng, uk_share=0.5)
     t = day * SECONDS_PER_DAY + int(rng.integers(0, 24)) * SECONDS_PER_HOUR
     records = []
 
@@ -100,7 +117,7 @@ def account_takeover(
     customer: Customer, day: int, directory: MerchantDirectory, rng: np.random.Generator
 ) -> list[dict]:
     device = _fraudster_device(rng)
-    _, lat, lon = _random_foreign_city(rng)
+    lat, lon = _fraudster_location(rng, uk_share=0.3)
     # Happens in the middle of the night (01:00-05:00) while the real customer is asleep.
     t = day * SECONDS_PER_DAY + int(rng.integers(1, 5)) * SECONDS_PER_HOUR
     t += int(rng.integers(0, SECONDS_PER_HOUR))

@@ -1,0 +1,222 @@
+{
+  "top_reason_by_type": {
+    "account_takeover": {
+      "amount": 0,
+      "device": 17,
+      "location": 0,
+      "velocity": 0
+    },
+    "card_testing": {
+      "amount": 0,
+      "device": 108,
+      "location": 0,
+      "velocity": 6
+    },
+    "false alarm (genuine)": {
+      "amount": 18,
+      "device": 0,
+      "location": 97,
+      "velocity": 7
+    },
+    "stolen_card_spree": {
+      "amount": 1,
+      "device": 0,
+      "location": 48,
+      "velocity": 11
+    }
+  },
+  "examples": [
+    {
+      "transaction_id": "T0521333",
+      "actual": "card_testing",
+      "amount": 1.47,
+      "score": 0.9990180867507278,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "device",
+          "share": 0.533,
+          "text": "Online payment from a device never used with this card before"
+        },
+        {
+          "group": "location",
+          "share": 0.167,
+          "text": "Paid 249 km from the card's usual area"
+        },
+        {
+          "group": "merchant",
+          "share": 0.162,
+          "text": "Merchant category: digital goods"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0521335",
+      "actual": "card_testing",
+      "amount": 1.1,
+      "score": 0.9998314378915771,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "device",
+          "share": 0.471,
+          "text": "Online payment from a device first seen in the last 24 hours"
+        },
+        {
+          "group": "location",
+          "share": 0.23,
+          "text": "Paid 245 km from the card's usual area"
+        },
+        {
+          "group": "merchant",
+          "share": 0.171,
+          "text": "Merchant category: digital goods"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0522170",
+      "actual": "false alarm (genuine)",
+      "amount": 56.72,
+      "score": 0.0005852076248824659,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "location",
+          "share": 0.392,
+          "text": "Paid 277 km from the card's usual area"
+        },
+        {
+          "group": "amount",
+          "share": 0.329,
+          "text": "\u00a356.72 is 3.3x this card's average payment"
+        },
+        {
+          "group": "merchant",
+          "share": 0.161,
+          "text": "Merchant category: fuel"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0523072",
+      "actual": "false alarm (genuine)",
+      "amount": 123.03,
+      "score": 0.01118928428117145,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "location",
+          "share": 0.376,
+          "text": "Paid 250 km from the card's usual area"
+        },
+        {
+          "group": "amount",
+          "share": 0.277,
+          "text": "\u00a3123.03 is 3.3x this card's average payment"
+        },
+        {
+          "group": "merchant",
+          "share": 0.216,
+          "text": "Merchant category: jewellery"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0542864",
+      "actual": "account_takeover",
+      "amount": 899.94,
+      "score": 0.993570079064383,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "device",
+          "share": 0.511,
+          "text": "Online payment from a device never used with this card before"
+        },
+        {
+          "group": "amount",
+          "share": 0.172,
+          "text": "\u00a3899.94 is 9.8x this card's average payment"
+        },
+        {
+          "group": "location",
+          "share": 0.168,
+          "text": "Paid outside the UK, 5,037 km from the card's usual area"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0542880",
+      "actual": "account_takeover",
+      "amount": 578.05,
+      "score": 0.9994831247452581,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "device",
+          "share": 0.417,
+          "text": "Online payment from a device first seen in the last 24 hours"
+        },
+        {
+          "group": "location",
+          "share": 0.221,
+          "text": "Paid outside the UK, 5,008 km from the card's usual area"
+        },
+        {
+          "group": "merchant",
+          "share": 0.132,
+          "text": "Merchant category: electronics"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0544648",
+      "actual": "stolen_card_spree",
+      "amount": 133.35,
+      "score": 0.0017185220635123162,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "location",
+          "share": 0.39,
+          "text": "Paid 150 km from the card's usual area"
+        },
+        {
+          "group": "amount",
+          "share": 0.349,
+          "text": "\u00a3133.35 is 2.7x this card's average payment"
+        },
+        {
+          "group": "merchant",
+          "share": 0.18,
+          "text": "Merchant category: clothing"
+        }
+      ]
+    },
+    {
+      "transaction_id": "T0544942",
+      "actual": "stolen_card_spree",
+      "amount": 76.95,
+      "score": 0.01550458328173083,
+      "flagged": true,
+      "reasons": [
+        {
+          "group": "location",
+          "share": 0.35,
+          "text": "Paid 147 km from the card's usual area"
+        },
+        {
+          "group": "velocity",
+          "share": 0.32,
+          "text": "1 payment and \u00a3133 spent in the previous hour"
+        },
+        {
+          "group": "merchant",
+          "share": 0.201,
+          "text": "First ever jewellery purchase on this card"
+        }
+      ]
+    }
+  ]
+}

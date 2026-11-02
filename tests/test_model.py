@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fraudlens.data import GeneratorConfig, generate_transactions
-from fraudlens.features import build_features
 from fraudlens.model import (
     evaluate,
     load_bundle,
@@ -11,21 +9,17 @@ from fraudlens.model import (
     save_bundle,
     threshold_at_fpr,
     time_split,
-    train,
 )
 
 
 @pytest.fixture(scope="module")
-def features() -> pd.DataFrame:
-    config = GeneratorConfig(
-        n_customers=400, n_days=30, seed=11, fraud_customer_share=0.1, travel_customer_share=0.05
-    )
-    return build_features(generate_transactions(config))
+def features(model_features) -> pd.DataFrame:
+    return model_features
 
 
 @pytest.fixture(scope="module")
-def bundle(features) -> dict:
-    return train(features, max_fpr=0.01)
+def bundle(model_bundle) -> dict:
+    return model_bundle
 
 
 # --- threshold and metrics, checked by hand ---

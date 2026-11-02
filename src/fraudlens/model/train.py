@@ -32,6 +32,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
 from fraudlens import __version__
+from fraudlens.explain.reasons import reference_profile
 from fraudlens.features.batch import load_transactions
 from fraudlens.features.definitions import (
     CATEGORICAL_FEATURES,
@@ -168,6 +169,8 @@ def train(
         },
         "feature_importance": feature_importance,
         "latency_ms": _single_payment_latency_ms(best["model"], split.test),
+        # "Typical genuine payment" from training data, used to explain alerts (Phase 4).
+        "reference": reference_profile(split.train),
     }
 
 
