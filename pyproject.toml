@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 fraudlens-generate = "fraudlens.data.generator:main"
+fraudlens-features = "fraudlens.features.batch:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

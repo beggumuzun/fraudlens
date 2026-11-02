@@ -41,8 +41,8 @@ flowchart LR
 
 - [x] **1. Synthetic data engine**: customers with individual habits, UK and foreign merchants,
       three fraud attack types and genuine trips abroad as hard negatives
-- [ ] **2. Feature engineering**: velocity, spend-vs-habit, location and device features,
-      computed point-in-time with no leakage
+- [x] **2. Feature engineering**: 23 velocity, habit, location and device features,
+      computed point-in-time by two engines (batch + online) that are tested to agree
 - [ ] **3. Modelling**: logistic regression baseline → gradient boosting; time-based split;
       PR-AUC and recall at a fixed false-alarm budget
 - [ ] **4. Explainability**: SHAP reason codes for every flagged payment
@@ -83,6 +83,46 @@ Default dataset: **~130,000 transactions**, 2,000 customers, 30 days, **~0.3% fr
 | `device_id` | device used for online payments (empty in store) |
 | `is_fraud`, `fraud_type` | labels: **never** used as model inputs |
 
+## Features
+
+Every feature for a payment is built **only from that card's earlier payments**. A test
+deletes all future data, recomputes everything and checks that no past value changes.
+
+| Group | Examples | Catches |
+|---|---|---|
+| Velocity | payments in last 10 min / 1 h / 24 h, small payments in last 10 min | card testing bursts |
+| Habit | amount ÷ card's average, z-score, how usual this hour is, new category | spending out of character |
+| Location | distance from usual place, distance and **travel speed** since last payment | stolen cards, "impossible travel" |
+| Device | first use of a device, device first seen < 24 h ago | account takeover |
+
+How strongly some of them separate fraud from genuine payments on the default dataset:
+
+| Feature | Genuine (mean) | Fraud (mean) | Ratio |
+|---|---:|---:|---:|
+| `small_txn_count_10m` | 0.002 | 2.19 | ~976× |
+| `is_outside_uk` | 0.004 | 0.68 | ~157× |
+| `txn_count_10m` | 0.03 | 2.22 | ~80× |
+| `dist_from_usual_km` | 55 | 3,506 | ~63× |
+| `new_device_24h` | 0.03 | 0.68 | ~25× |
+| `amount_to_avg_ratio` | 1.10 | 5.41 | ~5× |
+
+No single feature is enough on its own (genuine customers also travel abroad and buy
+expensive things), which is why a model that combines them is needed. That is Phase 3.
+
+### Two engines, one definition
+
+| | Batch engine | Online engine |
+|---|---|---|
+| Used for | building the training set | scoring a live payment |
+| How | vectorised pandas over the whole history | small running state per card |
+| Speed | ~130k payments in ~4 s | **p50 0.04 ms, p99 0.09 ms per payment** |
+
+Running two implementations of the same logic is a well-known source of
+*training/serving skew*. FraudLens guards against it with a parity test that replays a
+whole dataset through the online engine and requires every feature to match the batch
+engine. The test earned its place on day one: it caught a bug where the online engine
+computed `~True` (which is `-2` in Python) instead of `False`.
+
 ## Quick start
 
 ```bash
@@ -91,8 +131,9 @@ cd fraudlens
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# generate the dataset
+# generate the dataset, then build features (prints a fraud-vs-genuine report)
 fraudlens-generate --customers 2000 --days 30 --out data/transactions.csv
+fraudlens-features --input data/transactions.csv --out data/features.csv
 
 # run tests and lint
 pytest -v
@@ -104,10 +145,14 @@ ruff check .
 ```
 fraudlens/
 ├── src/fraudlens/
-│   └── data/
-│       ├── entities.py    # cities, categories, customers, merchants
-│       ├── scenarios.py   # fraud attacks and genuine travel
-│       └── generator.py   # builds the dataset, CLI, live replay
+│   ├── data/
+│   │   ├── entities.py    # cities, categories, customers, merchants
+│   │   ├── scenarios.py   # fraud attacks and genuine travel
+│   │   └── generator.py   # builds the dataset, CLI, live replay
+│   └── features/
+│       ├── definitions.py # feature names, constants, shared maths
+│       ├── batch.py       # vectorised engine for training + CLI
+│       └── online.py      # per-payment engine for live scoring
 ├── tests/                 # pytest suite, run on every push by GitHub Actions
 └── pyproject.toml
 ```
