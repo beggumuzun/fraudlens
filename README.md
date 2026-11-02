@@ -7,7 +7,7 @@ explains *why* each one was flagged, so a fraud analyst can act on it in seconds
 ![CI](https://github.com/beggumuzun/fraudlens/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 
-> 🚧 Work in progress. See the [roadmap](#roadmap) for what is built so far.
+> Work in progress. See the [roadmap](#roadmap) for what is built so far.
 
 ---
 
