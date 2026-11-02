@@ -1,0 +1,169 @@
+{
+  "model_name": "gradient_boosting",
+  "threshold": 0.0015789741087789588,
+  "max_fpr": 0.001,
+  "feature_columns": [
+    "amount",
+    "log_amount",
+    "is_online",
+    "hour",
+    "is_night",
+    "seconds_since_last",
+    "txn_count_10m",
+    "txn_count_1h",
+    "txn_count_24h",
+    "amount_sum_1h",
+    "amount_sum_24h",
+    "small_txn_count_10m",
+    "n_prev_txns",
+    "amount_to_avg_ratio",
+    "amount_zscore",
+    "hour_familiarity",
+    "is_new_category",
+    "dist_from_usual_km",
+    "dist_from_last_km",
+    "speed_from_last_kmh",
+    "is_outside_uk",
+    "is_new_device",
+    "new_device_24h",
+    "merchant_category"
+  ],
+  "version": "0.1.0",
+  "trained_at": "2026-11-02T23:37:56+00:00",
+  "split": {
+    "train": {
+      "rows": 423716,
+      "frauds": 592,
+      "from": "2026-01-01",
+      "to": "2026-02-08"
+    },
+    "valid": {
+      "rows": 97436,
+      "frauds": 156,
+      "from": "2026-02-09",
+      "to": "2026-02-17"
+    },
+    "test": {
+      "rows": 130394,
+      "frauds": 170,
+      "from": "2026-02-18",
+      "to": "2026-03-01"
+    }
+  },
+  "candidates": {
+    "logistic_regression": {
+      "threshold": 0.9954792046471611,
+      "fit_seconds": 2.42,
+      "valid": {
+        "n_payments": 97436,
+        "n_frauds": 156,
+        "average_precision": 0.8330297424230785,
+        "roc_auc": 0.9987301392754723,
+        "threshold": 0.9954792046471611,
+        "alerts": 230,
+        "false_positive_rate": 0.0009971217105263159,
+        "precision": 0.5782608695652174,
+        "recall": 0.8525641025641025,
+        "value_recall": 0.8599070845386045,
+        "attacks": 25,
+        "attack_recall": 0.92,
+        "recall_by_type": {
+          "account_takeover": 1.0,
+          "card_testing": 1.0,
+          "stolen_card_spree": 0.4888888888888889
+        }
+      },
+      "test": {
+        "n_payments": 130394,
+        "n_frauds": 170,
+        "average_precision": 0.5708971081240974,
+        "roc_auc": 0.9976682711418516,
+        "threshold": 0.9954792046471611,
+        "alerts": 307,
+        "false_positive_rate": 0.0012977638530532007,
+        "precision": 0.4495114006514658,
+        "recall": 0.8117647058823529,
+        "value_recall": 0.8673988270978227,
+        "attacks": 24,
+        "attack_recall": 0.9583333333333334,
+        "recall_by_type": {
+          "account_takeover": 1.0,
+          "card_testing": 0.9560439560439561,
+          "stolen_card_spree": 0.5254237288135594
+        }
+      }
+    },
+    "gradient_boosting": {
+      "threshold": 0.0015789741087789588,
+      "fit_seconds": 7.84,
+      "valid": {
+        "n_payments": 97436,
+        "n_frauds": 156,
+        "average_precision": 0.9786700698480412,
+        "roc_auc": 0.9998900872975708,
+        "threshold": 0.0015789741087789588,
+        "alerts": 249,
+        "false_positive_rate": 0.0009971217105263159,
+        "precision": 0.6104417670682731,
+        "recall": 0.9743589743589743,
+        "value_recall": 0.9858264417167544,
+        "attacks": 25,
+        "attack_recall": 1.0,
+        "recall_by_type": {
+          "account_takeover": 1.0,
+          "card_testing": 1.0,
+          "stolen_card_spree": 0.9111111111111111
+        }
+      },
+      "test": {
+        "n_payments": 130394,
+        "n_frauds": 170,
+        "average_precision": 0.9689067385144838,
+        "roc_auc": 0.9998381070083765,
+        "threshold": 0.0015789741087789588,
+        "alerts": 303,
+        "false_positive_rate": 0.0010443543432854159,
+        "precision": 0.5511551155115512,
+        "recall": 0.9823529411764705,
+        "value_recall": 0.9871714318949943,
+        "attacks": 24,
+        "attack_recall": 1.0,
+        "recall_by_type": {
+          "account_takeover": 1.0,
+          "card_testing": 1.0,
+          "stolen_card_spree": 0.9491525423728814
+        }
+      }
+    }
+  },
+  "feature_importance": {
+    "merchant_category": 0.4252,
+    "dist_from_usual_km": 0.3372,
+    "is_outside_uk": 0.2999,
+    "amount_sum_1h": 0.0524,
+    "amount_zscore": 0.0263,
+    "amount_to_avg_ratio": 0.0129,
+    "is_online": 0.0044,
+    "seconds_since_last": 0.0025,
+    "dist_from_last_km": 0.0024,
+    "hour": 0.0018,
+    "amount_sum_24h": 0.0005,
+    "n_prev_txns": 0.0005,
+    "hour_familiarity": 0.0004,
+    "txn_count_24h": 0.0001,
+    "is_new_category": 0.0001,
+    "log_amount": 0.0,
+    "is_night": 0.0,
+    "small_txn_count_10m": 0.0,
+    "is_new_device": 0.0,
+    "new_device_24h": 0.0,
+    "txn_count_10m": -0.0001,
+    "amount": -0.0002,
+    "txn_count_1h": -0.0002,
+    "speed_from_last_kmh": -0.0002
+  },
+  "latency_ms": {
+    "p50": 4.739067000059549,
+    "p99": 6.703887309945447
+  }
+}

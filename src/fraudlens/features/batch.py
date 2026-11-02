@@ -149,7 +149,9 @@ def feature_report(features: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_transactions(path: Path) -> pd.DataFrame:
-    return pd.read_csv(path, parse_dates=["timestamp"])
+    """Read a transactions or features CSV with the right column types."""
+    text_columns = {"device_id": "object", "fraud_type": "object"}
+    return pd.read_csv(path, parse_dates=["timestamp"], dtype=text_columns, low_memory=False)
 
 
 def main(argv: list[str] | None = None) -> None:

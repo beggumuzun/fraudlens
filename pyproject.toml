@@ -12,6 +12,8 @@ authors = [{ name = "Begüm Uzun" }]
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +25,7 @@ dev = [
 [project.scripts]
 fraudlens-generate = "fraudlens.data.generator:main"
 fraudlens-features = "fraudlens.features.batch:main"
+fraudlens-train = "fraudlens.model.train:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
