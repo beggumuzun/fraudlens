@@ -74,15 +74,17 @@ def test_live_monitor_scores_payments_when_running():
     at = run_page("live")
     at.toggle(key="live_running").set_value(True).run()
     assert not at.exception, at.exception
-    processed = next(m for m in at.metric if m.label == "Payments scored")
-    assert processed.value != "0"
+    panel = " ".join(m.value for m in at.markdown)
+    assert "Payments scored" in panel
+    assert '<div class="fl-kpi-value">0</div><div class="fl-kpi-label">Payments scored' not in panel
 
 
 def test_test_a_payment_alerts_on_night_shopping_abroad():
     at = run_page("test_payment")
     next(b for b in at.button if b.label == "Night shopping abroad").click().run()
     assert not at.exception, at.exception
-    assert at.error, "expected an alert for a night jewellery purchase from abroad on a new device"
+    page = " ".join(m.value for m in at.markdown)
+    assert "Held for review" in page, "expected an alert for night jewellery shopping abroad"
 
 
 def test_attack_simulator_reports_an_outcome():
@@ -90,10 +92,11 @@ def test_attack_simulator_reports_an_outcome():
     at.toggle[0].set_value(False).run()  # no step-by-step animation in tests
     next(b for b in at.button if b.label == "Launch attack").click().run()
     assert not at.exception, at.exception
-    assert at.success or at.error  # caught or missed, a verdict is always shown
+    page = " ".join(m.value for m in at.markdown)
+    assert "Caught" in page or "Missed" in page  # a verdict is always shown
 
 
 def test_model_performance_renders_the_trade_off():
     at = run_page("performance")
-    labels = [m.label for m in at.metric]
-    assert "Attacks caught" in labels and "Alerts per day" in labels
+    page = " ".join(m.value for m in at.markdown)
+    assert "Attacks caught" in page and "Alerts per day" in page

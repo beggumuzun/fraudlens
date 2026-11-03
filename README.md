@@ -21,7 +21,7 @@ warms up the live feature engine, which takes about 30 seconds.
 
 | Screen | What it shows |
 |---|---|
-| **Live monitor** | Unseen payments replayed in time order through the real-time path (online features, model, explanations). Alerts appear in a queue with their reasons, next to the ground truth. |
+| **Live monitor** | Unseen payments replayed in time order through the real-time path (online features, model, explanations). A "fraud seismograph" draws every payment as a line whose height is its fraud score on a log scale, so attacks punch through the alert line as red spikes. Alerts queue up with their reasons, next to the ground truth. |
 | **Test a payment** | Pick a real customer, describe a new payment (amount, place, time, device) and get the decision and its reasons instantly, from that card's actual history. |
 | **Attack simulator** | Launch a fresh card-testing, account-takeover or stolen-card attack on any customer and see at which payment it is caught and how much money is saved. |
 | **Model performance** | Baseline vs gradient boosting, and a slider for the false-alarm budget showing how many frauds, pounds and attacks each setting catches. |

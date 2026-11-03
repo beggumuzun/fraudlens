@@ -7,6 +7,7 @@ from datetime import datetime, time, timedelta
 import pandas as pd
 import streamlit as st
 
+from fraudlens.app import theme
 from fraudlens.app.components import (
     ALL_CITIES,
     card_picker,
@@ -77,11 +78,11 @@ def _apply_preset(values: dict) -> None:
 
 def render() -> None:
     world = get_world()
-    st.title("Test a payment")
-    st.write(
-        "Pick a real customer from the demo bank, describe a new payment, and see what the "
-        "model decides. Features are computed by the online engine from that card's actual "
-        "history, exactly as they would be for a live payment."
+    theme.page_header(
+        "Test a payment",
+        "Pick a real customer from the demo bank, describe a new payment and see what the "
+        "model decides. Everything is worked out from that card's own history, exactly as "
+        "it would be for a live payment.",
     )
 
     card_id = card_picker(world, key="tp_card")
@@ -159,11 +160,20 @@ def render() -> None:
     with right:
         st.subheader("The decision")
         if scored["alert"]:
-            st.error("**Alert**: this payment would be held and sent to a fraud analyst.")
+            theme.decision(
+                True,
+                "Held for review",
+                f"Risk {scored['risk']:.2f} out of 100. {risk_text(scored['risk'])}, so the "
+                "payment is paused and sent to a fraud analyst.",
+            )
         else:
-            st.success("**Approved**: nothing suspicious enough to stop this payment.")
-        st.metric("Risk score", f"{scored['risk']:.2f} / 100", help="Alerts start at 99.9")
-        st.caption(risk_text(scored["risk"]) + ". Alerts are raised above 99.9.")
+            theme.decision(
+                False,
+                "Approved",
+                f"Risk {scored['risk']:.2f} out of 100. {risk_text(scored['risk'])}; alerts "
+                "start at 99.9.",
+            )
+        theme.risk_meter(float(scored["score"]), world.threshold)
         st.markdown("**What pushed the risk up**")
         show_reasons(reasons, "This payment looks like the card's normal behaviour.")
 

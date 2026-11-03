@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from fraudlens.app import theme
 from fraudlens.data.entities import FOREIGN_CITIES, UK_CITIES
 from fraudlens.features.definitions import haversine_km
 
@@ -43,15 +44,8 @@ def truth_label(is_fraud: int, fraud_type) -> str:
 
 
 def show_reasons(reasons: list[dict], empty_text: str = "Nothing unusual stands out.") -> None:
-    """Each reason as a bar showing its share of the suspicion."""
-    if not reasons:
-        st.caption(empty_text)
-        return
-    for reason in reasons:
-        st.progress(
-            min(max(reason["share"], 0.0), 1.0),
-            text=f"**{reason['share']:.0%}** · {reason['text']}",
-        )
+    """Each reason with a bar showing its share of the suspicion."""
+    st.markdown(theme.reasons_html(reasons, empty_text), unsafe_allow_html=True)
 
 
 def risk_text(risk: float) -> str:
@@ -69,21 +63,19 @@ def card_picker(world, key: str, label: str = "Card") -> str:
 
     def fmt(card_id: str) -> str:
         c = cards.loc[card_id]
-        return f"{card_id} · lives in {c['usual_city']} · usually £{c['avg_amount']:.0f}"
+        return f"{card_id}, {c['usual_city']}, £{c['avg_amount']:.0f} average"
 
     return st.selectbox(label, options, index=default, format_func=fmt, key=key)
 
 
 def card_profile(world, card_id: str, per_row: int = 4) -> None:
-    """The card's normal behaviour, as metric tiles (per_row=2 for narrow columns)."""
+    """The card's normal behaviour as an instrument strip (per_row=2 for narrow columns)."""
     c = world.cards.loc[card_id]
     tiles = [
-        ("Usual city", c["usual_city"]),
-        ("Average payment", f"£{c['avg_amount']:.2f}"),
-        ("Payments on record", f"{c['payments']:,}"),
-        ("Last payment", pd.Timestamp(c["last_payment"]).strftime("%d %b, %H:%M")),
+        ("Usual city", c["usual_city"], None),
+        ("Average payment", f"£{c['avg_amount']:.2f}", None),
+        ("Payments on record", f"{c['payments']:,}", None),
+        ("Last payment", pd.Timestamp(c["last_payment"]).strftime("%d %b, %H:%M"), None),
     ]
     for start in range(0, len(tiles), per_row):
-        cols = st.columns(per_row)
-        for col, (label, value) in zip(cols, tiles[start : start + per_row], strict=False):
-            col.metric(label, value)
+        theme.kpi_panel(tiles[start : start + per_row])

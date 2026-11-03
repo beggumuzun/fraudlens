@@ -6,6 +6,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from fraudlens.app import theme
 from fraudlens.app.components import ATTACK_LABELS
 from fraudlens.app.state import get_world
 from fraudlens.explain.cli import explain_test_alerts
@@ -54,13 +55,12 @@ def render() -> None:
     bundle = world.bundle
     split = bundle["split"]
 
-    st.title("Model performance")
-    st.write(
-        f"Trained on **{split['train']['from']} to {split['train']['to']}**, alert threshold "
-        f"chosen on **{split['valid']['from']} to {split['valid']['to']}**, and tested on "
-        f"**{split['test']['from']} to {split['test']['to']}**: "
-        f"{split['test']['rows']:,} payments the model never saw, "
-        f"{split['test']['frauds']} of them fraudulent."
+    theme.page_header(
+        "Model performance",
+        f"Trained on {split['train']['from']} to {split['train']['to']}, alert line set on "
+        f"{split['valid']['from']} to {split['valid']['to']}, and tested on "
+        f"{split['test']['from']} to {split['test']['to']}: {split['test']['rows']:,} payments "
+        f"the model never saw, {split['test']['frauds']} of them fraudulent.",
     )
 
     st.subheader("Baseline vs gradient boosting")
@@ -98,14 +98,16 @@ def render() -> None:
         "False alarms allowed per 1,000 genuine payments", options=BUDGETS, value=1.0
     )
     row = tradeoff[tradeoff["budget"] == budget].iloc[0]
-    cols = st.columns(5)
-    cols[0].metric("Fraud payments caught", f"{row['fraud caught']:.1%}")
-    cols[1].metric("£ fraud caught", f"{row['£ caught']:.1%}")
-    cols[2].metric(
-        "Attacks caught", f"{round(row['attacks caught'] * row['attacks'])} / {row['attacks']}"
+    attacks_caught = round(row["attacks caught"] * row["attacks"])
+    theme.kpi_panel(
+        [
+            ("Fraud payments caught", f"{row['fraud caught']:.1%}", "ok"),
+            ("Fraud money caught", f"{row['£ caught']:.1%}", "ok"),
+            ("Attacks caught", f"{attacks_caught} of {row['attacks']}", "ok"),
+            ("Alerts per day", f"{row['alerts per day']:.0f}", "warn"),
+            ("Alerts that are real fraud", f"{row['precision']:.0%}", None),
+        ]
     )
-    cols[3].metric("Alerts per day", f"{row['alerts per day']:.0f}")
-    cols[4].metric("Alerts that are real fraud", f"{row['precision']:.0%}")
 
     left, right = st.columns(2, gap="large")
     with left:
@@ -121,12 +123,19 @@ def render() -> None:
             .encode(
                 x=alt.X("alerts per day:Q", title="Alerts per day"),
                 y=alt.Y("share:Q", title="Share caught", axis=alt.Axis(format="%")),
-                color=alt.Color("measure:N", title=None, legend=alt.Legend(orient="top")),
+                color=alt.Color(
+                    "measure:N",
+                    title=None,
+                    scale=alt.Scale(
+                        domain=["fraud caught", "£ caught"], range=[theme.AMBER, theme.TEAL]
+                    ),
+                    legend=alt.Legend(orient="top"),
+                ),
                 tooltip=["budget", alt.Tooltip("share:Q", format=".1%"), "alerts per day"],
             )
             .properties(height=300)
         )
-        st.altair_chart(chart, width="stretch")
+        theme.show_chart(chart)
         st.caption("More alerts catch more fraud, but each extra alert costs analyst time.")
     with right:
         by_type = pd.DataFrame(
@@ -137,7 +146,7 @@ def render() -> None:
         )
         chart = (
             alt.Chart(by_type)
-            .mark_bar()
+            .mark_bar(color=theme.TEAL, cornerRadiusEnd=2)
             .encode(
                 x=alt.X(
                     "caught:Q",
@@ -148,8 +157,9 @@ def render() -> None:
                 y=alt.Y("attack:N", title=None, sort="-x"),
                 tooltip=["attack", alt.Tooltip("caught:Q", format=".1%")],
             )
+            .properties(height=180)
         )
-        st.altair_chart(chart, width="stretch")
+        theme.show_chart(chart)
         st.caption("Stolen-card sprees are the hardest: they look like a genuine day out.")
 
     left, right = st.columns(2, gap="large")
@@ -163,13 +173,14 @@ def render() -> None:
         )
         chart = (
             alt.Chart(importance)
-            .mark_bar()
+            .mark_bar(color=theme.AMBER, cornerRadiusEnd=2)
             .encode(
                 x=alt.X("importance:Q", title="Drop in PR-AUC when shuffled"),
                 y=alt.Y("feature:N", title=None, sort="-x", axis=alt.Axis(labelLimit=220)),
             )
+            .properties(height=300)
         )
-        st.altair_chart(chart, width="stretch")
+        theme.show_chart(chart)
     with right:
         st.subheader("Why alerts were raised")
         st.write("Top reason behind each test-period alert, by what it really was:")

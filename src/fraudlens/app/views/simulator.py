@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import time
 
 import altair as alt
@@ -9,6 +10,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from fraudlens.app import theme
 from fraudlens.app.components import (
     ATTACK_LABELS,
     card_picker,
@@ -74,16 +76,24 @@ def _summary(result: pd.DataFrame) -> None:
     total = result["amount"].sum()
     alerts = result.index[result["alert"]]
     if len(alerts) == 0:
-        st.error(f"**Missed.** No payment raised an alert: £{total:,.2f} lost.")
+        theme.decision(
+            True, "Missed", f"No payment in this attack crossed the alert line: £{total:,.2f} lost."
+        )
         return
     first = int(alerts[0])
     lost = result.loc[: first - 1, "amount"].sum()
     minutes = (result.loc[first, "timestamp"] - result.loc[0, "timestamp"]).total_seconds() / 60
-    st.success(
-        f"**Caught on payment {first + 1} of {len(result)}**, "
-        f"{minutes:.0f} minutes into the attack. If the card is blocked at the first alert, "
-        f"**£{total - lost:,.2f} of £{total:,.2f} is stopped** (£{lost:,.2f} got through)."
-    )
+    if first == 0:
+        title = "Caught on the very first payment"
+        sub = f"With the card blocked straight away, <b>all £{total:,.2f} is stopped</b>."
+    else:
+        title = f"Caught on payment {first + 1} of {len(result)}"
+        sub = (
+            f"{minutes:.0f} minutes into the attack. With the card blocked at that first alert, "
+            f"<b>£{total - lost:,.2f} of £{total:,.2f} is stopped</b> and £{lost:,.2f} gets "
+            "through."
+        )
+    theme.decision(False, title, sub)
 
 
 def _chart(result: pd.DataFrame, threshold: float) -> None:
@@ -95,20 +105,23 @@ def _chart(result: pd.DataFrame, threshold: float) -> None:
     data = result[["step", "amount", "risk", "score", "alert"]].assign(
         status=np.where(result["alert"], "Alert", "Passed"), threshold=threshold
     )
-    low = min(float(data["score"].min()), threshold) / 3
+    data["score"] = data["score"].clip(lower=theme.SCORE_FLOOR)
+    low = max(min(float(data["score"].min()), threshold) / 3, theme.SCORE_FLOOR)
     x = alt.X("step:O", title="Payment in the attack", axis=alt.Axis(labelAngle=0))
     y_scale = alt.Scale(type="log", domain=[low, 1])
+    decades = [10.0**k for k in range(-6, 1) if 10.0**k >= low]
+    y_axis = alt.Axis(values=decades, format="~g", gridOpacity=0.6)
     base = alt.Chart(data)
-    line = base.mark_line(color="#94a3b8").encode(
-        x=x, y=alt.Y("score:Q", title="Fraud score (log scale)", scale=y_scale)
+    line = base.mark_line(color=theme.MUTED, strokeWidth=1.5).encode(
+        x=x, y=alt.Y("score:Q", title="Fraud score, log scale", scale=y_scale, axis=y_axis)
     )
-    points = base.mark_circle(size=140, opacity=1).encode(
+    points = base.mark_circle(size=160, opacity=1).encode(
         x=x,
         y=alt.Y("score:Q", scale=y_scale),
         color=alt.Color(
             "status:N",
             title=None,
-            scale=alt.Scale(domain=["Alert", "Passed"], range=["#dc2626", "#64748b"]),
+            scale=alt.Scale(domain=["Alert", "Passed"], range=[theme.RED, theme.CALM]),
             legend=alt.Legend(orient="top"),
         ),
         tooltip=[
@@ -117,51 +130,64 @@ def _chart(result: pd.DataFrame, threshold: float) -> None:
             alt.Tooltip("risk:Q", format=".2f"),
         ],
     )
-    rule = base.mark_rule(strokeDash=[4, 4], color="#dc2626").encode(
+    rule = base.mark_rule(strokeDash=[6, 4], color=theme.RED, opacity=0.8).encode(
         y=alt.Y("threshold:Q", scale=y_scale)
     )
-    st.altair_chart(alt.layer(line, rule, points).properties(height=280), width="stretch")
+    theme.show_chart(alt.layer(line, rule, points).properties(height=280))
     st.caption(
-        "Dashed line: the alert threshold. Each step up the axis is 10 times more suspicious."
+        "The dashed line is the alert line. Each step up the axis is ten times more suspicious."
+    )
+
+
+STATUS = {
+    "alert": ("Alert raised", "fl-step--alert", "fl-status--alert"),
+    "blocked": ("Card already blocked", "fl-step--blocked", "fl-status--blocked"),
+    "passed": ("Passed", "", "fl-status--passed"),
+}
+
+
+def _step_html(row, status: str) -> str:
+    label, row_class, status_class = STATUS[status]
+    return (
+        f'<div class="fl-step {row_class}">'
+        f'<div><div class="fl-step-n">{int(row["step"])}</div>'
+        f'<div class="fl-step-time">{row["timestamp"]:%H:%M:%S}</div></div>'
+        f'<div class="fl-step-what">£{row["amount"]:,.2f} on '
+        f"{html.escape(category_name(row['merchant_category']).lower())}<br>"
+        f"<span>{html.escape(where(row))}</span></div>"
+        f'<div class="fl-step-risk">{row["risk"]:.2f}</div>'
+        f'<div class="fl-status {status_class}">{label}</div></div>'
     )
 
 
 def _steps(result: pd.DataFrame, animate: bool) -> None:
+    st.subheader("Payment by payment")
     placeholder = st.empty()
     first_alert = int(result.index[result["alert"]][0]) if result["alert"].any() else None
     for upto in range(1, len(result) + 1) if animate else [len(result)]:
         with placeholder.container():
             for i in range(upto):
                 row = result.iloc[i]
-                if row["alert"]:
-                    status = "ALERT"
+                if row["alert"] and (first_alert is None or i <= first_alert):
+                    status = "alert"
                 elif first_alert is not None and i > first_alert:
-                    status = "Would be blocked"
+                    status = "blocked"
                 else:
-                    status = "Passed"
-                with st.container(border=True):
-                    cols = st.columns([1, 3, 2, 2])
-                    cols[0].markdown(f"**#{int(row['step'])}**  \n{row['timestamp']:%H:%M:%S}")
-                    cols[1].markdown(
-                        f"**£{row['amount']:,.2f}** · {category_name(row['merchant_category'])}  \n"
-                        f"{where(row)}"
-                    )
-                    cols[2].markdown(f"Risk **{row['risk']:.2f}**")
-                    color = {"ALERT": "red", "Would be blocked": "orange", "Passed": "gray"}[status]
-                    cols[3].badge(status, color=color)
-                    with st.expander("Why", expanded=(i == first_alert)):
-                        show_reasons(row["reasons"])
+                    status = "passed"
+                st.markdown(_step_html(row, status), unsafe_allow_html=True)
+                with st.expander("Why this score", expanded=(i == first_alert)):
+                    show_reasons(row["reasons"])
         if animate:
             time.sleep(0.5)
 
 
 def render() -> None:
     world = get_world()
-    st.title("Attack simulator")
-    st.write(
-        "Launch a brand-new attack on a real customer's card. The attack is generated on the "
-        "spot, after the end of the data, so the model has never seen it. Each payment is "
-        "scored in order, on top of the card's genuine history."
+    theme.page_header(
+        "Attack simulator",
+        "Launch a brand-new attack on a real customer's card. It is generated on the spot, "
+        "after the end of the data, so the model has never seen it. Each payment is scored "
+        "in order on top of the card's genuine history.",
     )
 
     left, right = st.columns([2, 3], gap="large")
@@ -182,7 +208,11 @@ def render() -> None:
 
     key = st.session_state.get("sim_key")
     if not key or key[:2] != (card_id, attack):
-        st.info("Choose a card and an attack, then press **Launch attack**.")
+        st.markdown(
+            '<div class="fl-empty">Choose a card and an attack, then press '
+            "<b>Launch attack</b>.</div>",
+            unsafe_allow_html=True,
+        )
         return
 
     result = _run_attack(world, *key)
