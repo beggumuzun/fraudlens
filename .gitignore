@@ -20,3 +20,6 @@ models/
 .DS_Store
 .vscode/
 .idea/
+
+# Secrets (API keys, passwords) must never be committed
+.streamlit/secrets.toml

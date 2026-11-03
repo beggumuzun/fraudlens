@@ -56,6 +56,27 @@ def _rolling_prev(df: pd.DataFrame, column: str, seconds: int, how: str) -> np.n
     return result.fillna(0.0).to_numpy()
 
 
+def _other_cards_on_device(df: pd.DataFrame) -> pd.Series:
+    """How many OTHER cards had already used this payment's device, strictly before it.
+
+    A family laptop shared by two cards gives 1. A fraud ring's device, used on card
+    after card, climbs to 5, 10, 20. In-store payments have no device and give 0.
+    """
+    result = pd.Series(0.0, index=df.index)
+    online = df[df["device_id"].notna()]
+    if online.empty:
+        return result
+    # The first moment each card was seen on each device.
+    first_use = online.groupby(["device_id", "card_id"])["timestamp"].min()
+    for device, rows in online.groupby("device_id"):
+        firsts = first_use.loc[device]  # one entry per card that ever used this device
+        sorted_firsts = np.sort(firsts.to_numpy())
+        seen_before = np.searchsorted(sorted_firsts, rows["timestamp"].to_numpy(), side="left")
+        own_card_counted = firsts.loc[rows["card_id"]].to_numpy() < rows["timestamp"].to_numpy()
+        result.loc[rows.index] = seen_before - own_card_counted
+    return result
+
+
 def build_features(transactions: pd.DataFrame) -> pd.DataFrame:
     """Return one row of features per transaction, in the same order as the input."""
     df = transactions.reset_index(drop=True)
@@ -129,6 +150,7 @@ def build_features(transactions: pd.DataFrame) -> pd.DataFrame:
     # cummin = earliest time this device was seen with this card, up to and including now.
     device_age_s = (df["timestamp"] - by_device["timestamp"].cummin()).dt.total_seconds()
     out["new_device_24h"] = (online & (device_age_s < NEW_DEVICE_WINDOW_S)).astype(int)
+    out["device_card_count"] = _other_cards_on_device(df)
 
     out["merchant_category"] = df["merchant_category"]
     for label in LABEL_COLUMNS:

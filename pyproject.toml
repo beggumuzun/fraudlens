@@ -29,6 +29,7 @@ fraudlens-generate = "fraudlens.data.generator:main"
 fraudlens-features = "fraudlens.features.batch:main"
 fraudlens-train = "fraudlens.model.train:main"
 fraudlens-explain = "fraudlens.explain.cli:main"
+fraudlens-rings = "fraudlens.graph.cli:main"
 fraudlens-app = "fraudlens.app.cli:main"
 
 [tool.setuptools.packages.find]

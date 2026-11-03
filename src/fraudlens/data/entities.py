@@ -164,8 +164,12 @@ def make_record(
     device_id: str | None,
     is_fraud: bool,
     fraud_type: str | None = None,
+    ring_id: str | None = None,
 ) -> dict:
-    """One transaction as a plain dict. ``offset_s`` = seconds since the simulation start."""
+    """One transaction as a plain dict. ``offset_s`` = seconds since the simulation start.
+
+    ``ring_id`` names the fraud ring behind an attack (ground truth, never a model input).
+    """
     return {
         "offset_s": int(offset_s),
         "customer_id": customer.customer_id,
@@ -180,4 +184,5 @@ def make_record(
         "device_id": device_id,
         "is_fraud": int(is_fraud),
         "fraud_type": fraud_type,
+        "ring_id": ring_id,
     }

@@ -31,10 +31,12 @@ from fraudlens.data.generator import (
     generate_transactions,
     iter_transactions,
 )
+from fraudlens.data.scenarios import Actor
 from fraudlens.explain.reasons import ReasonExplainer
 from fraudlens.features.batch import build_features
 from fraudlens.features.definitions import FEATURE_COLUMNS
 from fraudlens.features.online import OnlineFeatureStore
+from fraudlens.graph import LinkedGroup, ring_report
 from fraudlens.model.split import TimeSplit, time_split
 from fraudlens.model.train import predict_scores, train
 
@@ -58,6 +60,10 @@ class DemoWorld:
     store_at_test_start: OnlineFeatureStore
     store_full: OnlineFeatureStore
     cards: pd.DataFrame  # one row per card: profile used by the app pages
+    alerts: pd.DataFrame  # every payment the model flags, across the whole history
+    groups: list[LinkedGroup]  # cards linked through shared devices
+    compromise: dict[str, pd.DataFrame]  # ring group id -> likely breached shops
+    ring_actors: dict[str, Actor]  # group id -> the ring's devices, for new simulated attacks
 
     @property
     def threshold(self) -> float:
@@ -119,6 +125,27 @@ def _card_profiles(transactions: pd.DataFrame) -> pd.DataFrame:
     return stats.join(usual_city.rename("usual_city")).join(usual_device.rename("usual_device"))
 
 
+def _ring_actors(
+    groups: list[LinkedGroup], alerts: pd.DataFrame, transactions: pd.DataFrame
+) -> dict[str, Actor]:
+    """For each detected ring, the devices seen in its flagged payments and where they appear."""
+    actors = {}
+    for group in groups:
+        if not group.is_ring:
+            continue
+        hits = alerts[alerts["card_id"].isin(group.cards) & alerts["device_id"].notna()]
+        if hits.empty:
+            continue
+        rows = transactions.set_index("transaction_id").loc[hits["transaction_id"]]
+        actors[group.group_id] = Actor(
+            devices=tuple(sorted(hits["device_id"].unique())),
+            lat=float(rows["lat"].median()),
+            lon=float(rows["lon"].median()),
+            ring_id=group.group_id,
+        )
+    return actors
+
+
 def _warm_stores(transactions: pd.DataFrame, test_start: pd.Timestamp):
     """Replay history through the online engine: once up to the test period, once to the end."""
     store = OnlineFeatureStore()
@@ -155,6 +182,10 @@ def build_demo_world(config: GeneratorConfig = APP_CONFIG) -> DemoWorld:
     test_transactions = transactions[transactions["timestamp"] >= test_start].reset_index(drop=True)
     store_at_test_start, store_full = _warm_stores(transactions, test_start)
 
+    flagged = predict_scores(bundle["model"], features) >= bundle["threshold"]
+    alerts = transactions.loc[flagged, ["transaction_id", "card_id", "timestamp", "device_id"]]
+    groups, compromise = ring_report(transactions, alerts)
+
     return DemoWorld(
         config=config,
         customers=customers,
@@ -171,6 +202,10 @@ def build_demo_world(config: GeneratorConfig = APP_CONFIG) -> DemoWorld:
         store_at_test_start=store_at_test_start,
         store_full=store_full,
         cards=_card_profiles(transactions),
+        alerts=alerts,
+        groups=groups,
+        compromise=compromise,
+        ring_actors=_ring_actors(groups, alerts, transactions),
     )
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -28,9 +28,12 @@ from fraudlens.data.entities import (
 from fraudlens.data.scenarios import (
     FRAUD_SCENARIO_WEIGHTS,
     FRAUD_SCENARIOS,
+    ONLINE_SCENARIOS,
     SECONDS_PER_DAY,
     SECONDS_PER_HOUR,
+    breach_purchase,
     legit_travel,
+    make_ring,
 )
 
 COLUMNS = [
@@ -48,9 +51,10 @@ COLUMNS = [
     "device_id",
     "is_fraud",
     "fraud_type",
+    "ring_id",
 ]
 # Columns a live system would never see at scoring time (they are the answer key).
-LABEL_COLUMNS = ("is_fraud", "fraud_type")
+LABEL_COLUMNS = ("is_fraud", "fraud_type", "ring_id")
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,9 @@ class GeneratorConfig:
     seed: int = 42
     fraud_customer_share: float = 0.03  # share of customers hit by one fraud attack
     travel_customer_share: float = 0.03  # share of customers who go abroad (not fraud)
+    ring_share: float = 0.6  # share of online attacks carried out by fraud rings
+    victims_per_ring: int = 8  # average number of cards one ring attacks
+    household_share: float = 0.04  # customers who share a device with a family member
     warmup_days: int = 7  # no fraud at the start, so every card has some history
 
     def __post_init__(self) -> None:
@@ -68,7 +75,10 @@ class GeneratorConfig:
             raise ValueError("n_customers must be positive")
         if self.n_days <= self.warmup_days:
             raise ValueError("n_days must be greater than warmup_days")
-        for name in ("fraud_customer_share", "travel_customer_share"):
+        if self.victims_per_ring < 1:
+            raise ValueError("victims_per_ring must be at least 1")
+        shares = ("fraud_customer_share", "travel_customer_share", "ring_share", "household_share")
+        for name in shares:
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1")
 
@@ -136,6 +146,17 @@ def build_world(
     rng = np.random.default_rng(config.seed)
     customers = build_customers(config.n_customers, rng)
     directory = MerchantDirectory(build_merchants(rng))
+
+    # Households: two or three customers paying online from the same family laptop or
+    # tablet. Genuine shared devices are the hard negatives for the fraud-ring analysis.
+    n_households = round(config.n_customers * config.household_share / 2)
+    order = iter(rng.permutation(config.n_customers))
+    for _ in range(n_households):
+        size = 3 if rng.random() < 0.3 else 2
+        members = [next(order) for _ in range(size)]
+        owner = customers[members[0]]
+        for member in members[1:]:
+            customers[member] = replace(customers[member], device_id=owner.device_id)
     return customers, directory, rng
 
 
@@ -151,10 +172,26 @@ def generate_transactions(config: GeneratorConfig | None = None) -> pd.DataFrame
     # Fraud attacks, each on a different victim, only after the warm-up period.
     scenario_names = list(FRAUD_SCENARIOS)
     n_victims = round(config.n_customers * config.fraud_customer_share)
+    attacks = []
     for idx in rng.choice(config.n_customers, size=n_victims, replace=False):
         name = scenario_names[rng.choice(len(scenario_names), p=FRAUD_SCENARIO_WEIGHTS)]
-        day = int(rng.integers(config.warmup_days, config.n_days))
-        records.extend(FRAUD_SCENARIOS[name](customers[idx], day, directory, rng))
+        attacks.append((int(idx), name, int(rng.integers(config.warmup_days, config.n_days))))
+
+    # Some online attacks are the work of fraud rings: one actor, many victims, one breach.
+    online = [a for a in attacks if a[1] in ONLINE_SCENARIOS]
+    n_ring_victims = round(len(online) * config.ring_share)
+    n_rings = max(1, round(n_ring_victims / config.victims_per_ring)) if n_ring_victims else 0
+    rings = [make_ring(f"R{k + 1:02d}", directory, rng) for k in range(n_rings)]
+    ring_of = {}
+    for j, pos in enumerate(rng.permutation(len(online))[:n_ring_victims]):
+        ring_of[online[pos][0]] = rings[j % n_rings]
+
+    for idx, name, day in attacks:
+        ring = ring_of.get(idx)
+        if ring is not None:
+            records.append(breach_purchase(customers[idx], day, ring, rng))
+        actor = ring.actor if ring is not None else None
+        records.extend(FRAUD_SCENARIOS[name](customers[idx], day, directory, rng, actor=actor))
 
     # Genuine trips abroad (hard negatives).
     n_travellers = round(config.n_customers * config.travel_customer_share)
@@ -191,6 +228,8 @@ def summarise(df: pd.DataFrame) -> dict:
         "fraud_transactions": int(df["is_fraud"].sum()),
         "fraud_rate_pct": round(100 * float(df["is_fraud"].mean()), 3),
         "fraud_by_type": df["fraud_type"].value_counts().to_dict(),
+        "fraud_rings": int(df["ring_id"].nunique()),
+        "cards_hit_by_rings": int(df.loc[df["ring_id"].notna(), "card_id"].nunique()),
         "first_timestamp": str(df["timestamp"].min()),
         "last_timestamp": str(df["timestamp"].max()),
     }

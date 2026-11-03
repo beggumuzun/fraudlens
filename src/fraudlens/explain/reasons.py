@@ -44,7 +44,7 @@ FEATURE_GROUPS: dict[str, list[str]] = {
         "small_txn_count_10m",
     ],
     "amount": ["amount", "log_amount", "amount_to_avg_ratio", "amount_zscore"],
-    "device": ["is_new_device", "new_device_24h", "is_online"],
+    "device": ["is_new_device", "new_device_24h", "is_online", "device_card_count"],
     "timing": ["hour", "is_night", "hour_familiarity"],
     "merchant": ["merchant_category", "is_new_category"],
     "history": ["n_prev_txns"],
@@ -115,6 +115,10 @@ def describe(group: str, f: pd.Series) -> str:
             )
         return f"£{f['amount']:,.2f}, close to this card's usual £{usual:,.0f}"
     if group == "device":
+        if f["is_online"] and f["device_card_count"] >= 1:
+            others = int(f["device_card_count"])
+            cards = "another card" if others == 1 else f"{others} other cards"
+            return f"This device has already been used with {cards}"
         if f["is_online"] and f["is_new_device"]:
             return "Online payment from a device never used with this card before"
         if f["is_online"] and f["new_device_24h"]:

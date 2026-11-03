@@ -4,6 +4,7 @@ Screens are driven headlessly with Streamlit's AppTest, on a small demo world.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
@@ -100,3 +101,45 @@ def test_model_performance_renders_the_trade_off():
     at = run_page("performance")
     page = " ".join(m.value for m in at.markdown)
     assert "Attacks caught" in page and "Alerts per day" in page
+
+
+def test_fraud_rings_page_finds_rings_and_a_leak():
+    at = run_page("rings")
+    page = " ".join(m.value for m in at.markdown)
+    assert "Rings found" in page
+    assert "likely point of compromise" in page
+
+
+def test_simulator_can_replay_a_known_ring():
+    at = run_page("simulator")
+    at.toggle[0].set_value(False).run()
+    at.radio(key="sim_attack").set_value("ring_card_testing").run()
+    next(b for b in at.button if b.label == "Launch attack").click().run()
+    assert not at.exception, at.exception
+    page = " ".join(m.value for m in at.markdown)
+    assert "Caught" in page or "Missed" in page
+
+
+def test_a_known_ring_device_is_recognised_from_the_first_payment(world):
+    """Model-independent: the ring's device was seen on other cards, so the network feature
+    is already non-zero on the attack's very first payment."""
+    from fraudlens.app.world import features_frame, strip_labels
+    from fraudlens.data.scenarios import card_testing
+
+    card = world.cards[world.cards["frauds"] == 0].index[0]
+    actor = next(iter(world.ring_actors.values()))
+    records = card_testing(
+        world.customer(card),
+        world.config.n_days,
+        world.directory,
+        np.random.default_rng(0),
+        actor=actor,
+    )
+    records.sort(key=lambda r: r["offset_s"])
+    store = world.store_full.snapshot([card])
+    start = pd.Timestamp(world.config.start_date)
+    first = records[0]
+    txn = strip_labels({k: v for k, v in first.items() if k != "offset_s"})
+    txn["timestamp"] = start + pd.Timedelta(seconds=first["offset_s"])
+    features = features_frame([store.process(txn)])
+    assert features["device_card_count"].iloc[0] >= 2

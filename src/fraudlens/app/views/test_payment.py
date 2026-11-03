@@ -20,6 +20,7 @@ from fraudlens.app.state import get_world
 from fraudlens.app.world import features_frame
 from fraudlens.data.entities import CATEGORIES, UK_CITIES
 from fraudlens.explain.reasons import FEATURE_GROUPS
+from fraudlens.features.definitions import FEATURE_COLUMNS
 
 NEW_DEVICE = "NEW-DEVICE"
 
@@ -177,7 +178,7 @@ def render() -> None:
         st.markdown("**What pushed the risk up**")
         show_reasons(reasons, "This payment looks like the card's normal behaviour.")
 
-        with st.expander("All 23 features the model saw"):
+        with st.expander(f"All {len(FEATURE_COLUMNS)} features the model saw"):
             values = features.iloc[0]
             rows = [
                 {"group": group, "feature": col, "value": values[col]}

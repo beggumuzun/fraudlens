@@ -9,7 +9,7 @@ import streamlit as st
 
 from fraudlens.app import theme
 from fraudlens.app.state import get_world
-from fraudlens.app.views import live, performance, simulator, test_payment
+from fraudlens.app.views import live, performance, rings, simulator, test_payment
 
 GITHUB_URL = "https://github.com/beggumuzun/fraudlens"
 
@@ -36,6 +36,12 @@ def run() -> None:
             title="Attack simulator",
             icon=":material/bug_report:",
             url_path="attack-simulator",
+        ),
+        st.Page(
+            rings.render,
+            title="Fraud rings",
+            icon=":material/hub:",
+            url_path="fraud-rings",
         ),
         st.Page(
             performance.render,

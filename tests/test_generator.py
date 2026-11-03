@@ -89,3 +89,29 @@ def test_stream_hides_labels_by_default(df):
 def test_invalid_config_is_rejected(kwargs):
     with pytest.raises(ValueError):
         GeneratorConfig(**kwargs)
+
+
+# --- fraud rings and households ---
+
+
+def test_ring_labels_only_on_ring_fraud(df):
+    assert df.loc[df["ring_id"].notna(), "is_fraud"].eq(1).all()
+    online = df["fraud_type"].isin(["card_testing", "account_takeover"])
+    assert (
+        df.loc[df["ring_id"].notna(), "fraud_type"].isin(["card_testing", "account_takeover"]).all()
+    )
+    assert df.loc[online, "ring_id"].notna().any()  # some online attacks are ring work
+    assert df.loc[df["fraud_type"] == "stolen_card_spree", "ring_id"].isna().all()
+
+
+def test_a_ring_reuses_its_devices_across_victims(df):
+    rings = df[df["ring_id"].notna()].groupby("ring_id")
+    for _, ring in rings:
+        assert ring["card_id"].nunique() >= 2
+        assert ring["device_id"].nunique() <= 3  # a small device pool shared by all victims
+
+
+def test_some_genuine_devices_are_shared_by_families(df):
+    genuine = df[(df["is_fraud"] == 0) & df["device_id"].notna()]
+    cards_per_device = genuine.groupby("device_id")["card_id"].nunique()
+    assert (cards_per_device >= 2).any()

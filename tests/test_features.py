@@ -147,3 +147,27 @@ def test_online_compute_does_not_change_state():
     assert len(store) == 0
     store.process(txn)
     assert store.compute(make_txn(1, 1, 10))["n_prev_txns"] == 1
+
+
+def test_device_card_count_counts_other_cards_seen_before():
+    df = pd.DataFrame(
+        [
+            make_txn(0, 0, card="A", channel="online", device="LAPTOP"),
+            make_txn(1, 10, card="B", channel="online", device="LAPTOP"),
+            make_txn(2, 20, card="A", channel="online", device="LAPTOP"),
+            make_txn(3, 30, card="C", channel="online", device="LAPTOP"),
+            make_txn(4, 40, card="D", channel="in_store"),
+        ]
+    )
+    counts = build_features(df)["device_card_count"].tolist()
+    # A first: nobody before. B: A before. A again: B before (A itself never counts).
+    # C: A and B before. D paid in a shop: no device, so 0.
+    assert counts == [0, 1, 1, 2, 0]
+
+
+def test_ring_devices_light_up_the_network_feature(features):
+    ring_rows = features[features["ring_id"].notna()]
+    genuine = features[features["is_fraud"] == 0]
+    assert ring_rows["device_card_count"].mean() > 10 * max(
+        genuine["device_card_count"].mean(), 0.01
+    )

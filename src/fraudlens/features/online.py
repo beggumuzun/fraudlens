@@ -65,6 +65,8 @@ def _device(txn: dict) -> str | None:
 class OnlineFeatureStore:
     def __init__(self) -> None:
         self._cards: dict[str, CardState] = {}
+        # device -> {card: first time seen}: the links between cards (shared devices).
+        self._device_cards: dict[str, dict[str, float]] = {}
 
     def __len__(self) -> int:
         return len(self._cards)
@@ -72,6 +74,7 @@ class OnlineFeatureStore:
     def snapshot(self, card_ids: list[str]) -> OnlineFeatureStore:
         """An independent copy holding only these cards (cheap 'what if' experiments)."""
         copy_ = OnlineFeatureStore()
+        copy_._device_cards = deepcopy(self._device_cards)  # rings span many cards
         for card_id in card_ids:
             if card_id in self._cards:
                 copy_._cards[card_id] = deepcopy(self._cards[card_id])
@@ -137,6 +140,10 @@ class OnlineFeatureStore:
         first_seen = state.devices.get(device, t)  # unseen device -> first seen right now
         features["is_new_device"] = float(online and device not in state.devices)
         features["new_device_24h"] = float(online and t - first_seen < NEW_DEVICE_WINDOW_S)
+        other_cards = self._device_cards.get(device, {}) if device is not None else {}
+        features["device_card_count"] = float(
+            sum(1 for card, first in other_cards.items() if card != txn["card_id"] and first < t)
+        )
 
         features["merchant_category"] = txn["merchant_category"]
         return features
@@ -158,6 +165,7 @@ class OnlineFeatureStore:
         state.hour_bins[pd.Timestamp(txn["timestamp"]).hour // HOUR_BIN_SIZE] += 1
         if (device := _device(txn)) is not None:
             state.devices.setdefault(device, t)
+            self._device_cards.setdefault(device, {}).setdefault(txn["card_id"], t)
 
         state.recent.append((t, amount))
         while state.recent and state.recent[0][0] < t - LONGEST_WINDOW_S:

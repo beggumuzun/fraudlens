@@ -20,10 +20,17 @@ from fraudlens.app.components import (
     where,
 )
 from fraudlens.app.state import get_world
-from fraudlens.app.world import features_frame
-from fraudlens.data.scenarios import FRAUD_SCENARIOS
+from fraudlens.app.world import features_frame, strip_labels
+from fraudlens.data.scenarios import FRAUD_SCENARIOS, card_testing
+
+RING_ATTACK = "ring_card_testing"
 
 DESCRIPTIONS = {
+    RING_ATTACK: (
+        "A fraud ring the bank has already uncovered strikes a new card, from one of the "
+        "same devices. The device has been used on other cards before, and that link alone "
+        "gives the attack away."
+    ),
     "card_testing": (
         "A criminal has the card number. They try a burst of tiny online payments to check "
         "it works, then buy expensive electronics. Half of them hide behind a UK VPN."
@@ -47,14 +54,19 @@ def _run_attack(world, card_id: str, attack: str, seed: int) -> pd.DataFrame:
         pd.Timestamp(world.cards.loc[card_id, "last_payment"]).normalize()
         - pd.Timestamp(world.config.start_date)
     ).days
-    records = FRAUD_SCENARIOS[attack](customer, last_day + 1, world.directory, rng)
+    if attack == RING_ATTACK:
+        # The same ring strikes again: card testing from one of its known devices.
+        actor = next(iter(world.ring_actors.values()))
+        records = card_testing(customer, last_day + 1, world.directory, rng, actor=actor)
+    else:
+        records = FRAUD_SCENARIOS[attack](customer, last_day + 1, world.directory, rng)
     records.sort(key=lambda r: r["offset_s"])
 
     store = world.store_full.snapshot([card_id])  # private copy: the real history is untouched
     start = pd.Timestamp(world.config.start_date)
     txns, feature_rows = [], []
     for i, record in enumerate(records, start=1):
-        txn = {k: v for k, v in record.items() if k not in ("offset_s", "is_fraud", "fraud_type")}
+        txn = strip_labels({k: v for k, v in record.items() if k != "offset_s"})
         txn["transaction_id"] = f"SIM{i:03d}"
         txn["timestamp"] = start + pd.Timedelta(seconds=record["offset_s"])
         feature_rows.append(store.process(txn))
@@ -193,9 +205,10 @@ def render() -> None:
     left, right = st.columns([2, 3], gap="large")
     with left:
         card_id = card_picker(world, key="sim_card", label="Victim's card")
-        attack = st.radio(
-            "Attack type", list(ATTACK_LABELS), format_func=ATTACK_LABELS.get, key="sim_attack"
-        )
+        labels = dict(ATTACK_LABELS)
+        if world.ring_actors:
+            labels[RING_ATTACK] = "Card testing by a known fraud ring"
+        attack = st.radio("Attack type", list(labels), format_func=labels.get, key="sim_attack")
         st.caption(DESCRIPTIONS[attack])
         animate = st.toggle("Play payments one by one", value=True)
         if st.button("Launch attack", type="primary", width="stretch"):

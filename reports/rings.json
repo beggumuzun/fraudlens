@@ -1,0 +1,94 @@
+{
+  "detection": {
+    "true_rings": 8,
+    "rings_found": 8,
+    "victim_cards": 62,
+    "victim_cards_found": 62,
+    "groups_flagged": 9,
+    "false_ring_groups": 1,
+    "linked_groups_checked": 35
+  },
+  "points_of_compromise": [
+    {
+      "group": "G001",
+      "cards": 10,
+      "flagged_cards": 8,
+      "top_shop": "M00046",
+      "victims_who_paid_there": 8,
+      "all_customers_share": 0.138,
+      "lift": 7.25
+    },
+    {
+      "group": "G002",
+      "cards": 10,
+      "flagged_cards": 8,
+      "top_shop": "M00261",
+      "victims_who_paid_there": 7,
+      "all_customers_share": 0.311,
+      "lift": 2.81
+    },
+    {
+      "group": "G003",
+      "cards": 8,
+      "flagged_cards": 8,
+      "top_shop": "M00321",
+      "victims_who_paid_there": 8,
+      "all_customers_share": 0.358,
+      "lift": 2.79
+    },
+    {
+      "group": "G004",
+      "cards": 8,
+      "flagged_cards": 8,
+      "top_shop": "M00257",
+      "victims_who_paid_there": 8,
+      "all_customers_share": 0.304,
+      "lift": 3.29
+    },
+    {
+      "group": "G005",
+      "cards": 8,
+      "flagged_cards": 8,
+      "top_shop": "M00053",
+      "victims_who_paid_there": 8,
+      "all_customers_share": 0.129,
+      "lift": 7.74
+    },
+    {
+      "group": "G006",
+      "cards": 8,
+      "flagged_cards": 8,
+      "top_shop": "M00259",
+      "victims_who_paid_there": 8,
+      "all_customers_share": 0.311,
+      "lift": 3.22
+    },
+    {
+      "group": "G007",
+      "cards": 7,
+      "flagged_cards": 7,
+      "top_shop": "M00053",
+      "victims_who_paid_there": 7,
+      "all_customers_share": 0.129,
+      "lift": 7.74
+    },
+    {
+      "group": "G008",
+      "cards": 7,
+      "flagged_cards": 7,
+      "top_shop": "M00258",
+      "victims_who_paid_there": 7,
+      "all_customers_share": 0.318,
+      "lift": 3.15
+    },
+    {
+      "group": "G034",
+      "cards": 3,
+      "flagged_cards": 2,
+      "top_shop": "M00330",
+      "victims_who_paid_there": 2,
+      "all_customers_share": 0.189,
+      "lift": 5.3
+    }
+  ]
+}

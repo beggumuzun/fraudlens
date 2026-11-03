@@ -56,12 +56,14 @@ NUMERIC_FEATURES = [
     "is_outside_uk",
     "is_new_device",  # online, and this device has never been used with the card
     "new_device_24h",  # online, from a device first seen on this card less than 24h ago
+    # Network: links between cards through shared devices (fraud rings)
+    "device_card_count",  # other cards that used this device before (0 in store)
 ]
 CATEGORICAL_FEATURES = ["merchant_category"]
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 ID_COLUMNS = ["transaction_id", "timestamp", "card_id"]
-LABEL_COLUMNS = ["is_fraud", "fraud_type"]
+LABEL_COLUMNS = ["is_fraud", "fraud_type", "ring_id"]
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
