@@ -3,10 +3,11 @@
 **Real-time, explainable card fraud detection.**
 FraudLens scores every card payment the moment it happens, flags the suspicious ones and
 explains *why* each one was flagged, so a fraud analyst can act on it in seconds.
-
+[![Open the live app](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fraudlens-begum.streamlit.app)
 ![CI](https://github.com/beggumuzun/fraudlens/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 
+**Live demo: [fraudlens-begum.streamlit.app](https://fraudlens-begum.streamlit.app)**
 > Work in progress. See the [roadmap](#roadmap) for what is built so far.
 
 ---
