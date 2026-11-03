@@ -29,7 +29,12 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import (
+    FunctionTransformer,
+    OneHotEncoder,
+    OrdinalEncoder,
+    StandardScaler,
+)
 
 from fraudlens import __version__
 from fraudlens.explain.reasons import reference_profile
@@ -45,10 +50,41 @@ from fraudlens.model.split import time_split
 DEFAULT_MAX_FPR = 0.001  # at most 1 false alarm per 1,000 genuine payments
 
 
+# Counts, amounts, distances and gaps are heavily skewed (a distance can be 2 km or
+# 5,000 km). A linear model gives each feature one weight, so a few extreme values
+# dominate it. log1p squeezes them onto a sensible scale. Without this the baseline
+# scored a PR-AUC of 0.29 instead of 0.85: an unfairly weak opponent.
+SKEWED_FEATURES = [
+    "amount",
+    "seconds_since_last",
+    "txn_count_10m",
+    "txn_count_1h",
+    "txn_count_24h",
+    "amount_sum_1h",
+    "amount_sum_24h",
+    "small_txn_count_10m",
+    "n_prev_txns",
+    "amount_to_avg_ratio",
+    "dist_from_usual_km",
+    "dist_from_last_km",
+    "speed_from_last_kmh",
+    "device_card_count",
+]
+
+
 def make_logistic_regression(seed: int) -> Pipeline:
+    skewed = [c for c in NUMERIC_FEATURES if c in SKEWED_FEATURES]
+    other = [c for c in NUMERIC_FEATURES if c not in SKEWED_FEATURES]
+    log_then_scale = Pipeline(
+        [
+            ("log", FunctionTransformer(np.log1p, feature_names_out="one-to-one")),
+            ("scale", StandardScaler()),
+        ]
+    )
     prep = ColumnTransformer(
         [
-            ("num", StandardScaler(), NUMERIC_FEATURES),
+            ("skewed", log_then_scale, skewed),
+            ("num", StandardScaler(), other),
             ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
         ]
     )
@@ -114,6 +150,7 @@ def train(
     valid_frac: float = 0.15,
     test_frac: float = 0.2,
     importance_repeats: int = 5,
+    serve: str | None = None,
 ) -> dict:
     """Train every candidate, pick the best on validation, return a saveable bundle."""
     split = time_split(features, valid_frac=valid_frac, test_frac=test_frac)
@@ -137,7 +174,15 @@ def train(
             "test": evaluate(_scored(split.test, predict_scores(model, split.test)), threshold),
         }
 
+    # Normally the model with the best validation PR-AUC is served. ``serve`` overrides
+    # that when the choice was already made on a larger, more reliable evaluation
+    # (the app's small demo world uses it; see the README).
     best_name = max(candidates, key=lambda n: candidates[n]["valid"]["average_precision"])
+    selected_by = "validation"
+    if serve is not None:
+        if serve not in candidates:
+            raise ValueError(f"Unknown model {serve!r}; choose from {list(candidates)}")
+        best_name, selected_by = serve, "fixed"
     best = candidates[best_name]
 
     importance = permutation_importance(
@@ -159,6 +204,7 @@ def train(
     return {
         "model": best["model"],
         "model_name": best_name,
+        "selected_by": selected_by,
         "threshold": best["threshold"],
         "max_fpr": max_fpr,
         "feature_columns": FEATURE_COLUMNS,

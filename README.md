@@ -192,20 +192,40 @@ Test set (130,510 payments, 173 fraudulent, 29 separate attacks):
 
 | Model | PR-AUC | Fraud payments caught | £ fraud caught | Attacks caught | Alert precision |
 |---|---:|---:|---:|---:|---:|
-| Logistic regression (baseline) | 0.287 | 63.0% | 66.2% | 22 / 29 | 32% |
+| Logistic regression (baseline) | 0.850 | 91.9% | 90.4% | 29 / 29 | 49% |
 | **Gradient boosting** | **0.970** | **98.3%** | **98.7%** | **29 / 29** | **55%** |
 
 - Gradient boosting wins because fraud lives in *combinations* ("far from home **and** a new
   device **and** at night") that a linear model cannot express. The gap is largest on
-  stolen-card sprees: 96% caught vs 29% for the baseline.
+  stolen-card sprees (96% caught vs 84%) and in how clean the alerts are (PR-AUC 0.97 vs 0.85).
 - Recall by attack type: account takeover 100%, card testing 100%, stolen card spree 95.7%.
 - Most useful features (permutation importance): distance from usual location, device first
   seen in the last 24 h, merchant category, amount vs habit, money spent in the last hour.
 - Scoring one payment takes about **7 ms** (p50) on a laptop CPU.
-- The baseline fell from 0.67 to 0.29 PR-AUC when rings and shared family devices were
-  added to the data, while gradient boosting held steady. A likely reason, not yet tested:
-  "several cards on one device" is suspicious for a ring but normal for a family, and
-  telling them apart needs exactly the kind of combination a linear model cannot learn.
+
+**A hypothesis I got wrong.** After fraud rings and shared family devices were added to
+the data, the baseline collapsed from 0.67 to 0.29 PR-AUC while gradient boosting held
+steady. My first guess was that "several cards on one device" confused it, being
+suspicious for a ring but normal for a family. An ablation disproved that:
+
+| Baseline variant | PR-AUC |
+|---|---:|
+| As it was | 0.29 |
+| Without the shared-device feature | 0.26 |
+| **With log-transformed skewed features** | **0.85** |
+
+The real cause was preprocessing. Counts, amounts and distances are heavily skewed (2 km
+or 5,000 km), and a linear model, with one weight per feature, gets dominated by the
+extremes. Applying `log1p` before scaling is standard practice for linear models, so
+the baseline now does it. Gradient boosting is unaffected (trees only care about the
+order of values) and still wins, but now against a fair opponent.
+
+**Which model the app serves.** On the app's much smaller demo world (2,000 customers,
+45 days, about 13 attacks to test on), the fixed baseline and gradient boosting finish
+within noise of each other on validation (0.935 vs 0.932), and the baseline then misses
+attacks the larger evaluation shows gradient boosting catches. Choosing between models
+on a coin toss would be a mistake, so the app serves the winner of the evaluation above
+and its performance screen says so openly.
 
 Full numbers are in [`reports/metrics.json`](reports/metrics.json).
 

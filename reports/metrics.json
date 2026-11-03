@@ -30,7 +30,7 @@
     "merchant_category"
   ],
   "version": "0.1.0",
-  "trained_at": "2026-11-03T01:21:03+00:00",
+  "trained_at": "2026-11-03T01:36:54+00:00",
   "split": {
     "train": {
       "rows": 423327,
@@ -53,50 +53,50 @@
   },
   "candidates": {
     "logistic_regression": {
-      "threshold": 0.9994732756596424,
-      "fit_seconds": 5.74,
+      "threshold": 0.9927155579766369,
+      "fit_seconds": 3.96,
       "valid": {
         "n_payments": 97542,
         "n_frauds": 168,
-        "average_precision": 0.5612936409580337,
-        "roc_auc": 0.9978003013907105,
-        "threshold": 0.9994732756596424,
-        "alerts": 219,
+        "average_precision": 0.9138187114058516,
+        "roc_auc": 0.9996194104811396,
+        "threshold": 0.9927155579766369,
+        "alerts": 255,
         "false_positive_rate": 0.000996159138989874,
-        "precision": 0.5570776255707762,
-        "recall": 0.7261904761904762,
-        "value_recall": 0.8182883375757438,
+        "precision": 0.6196078431372549,
+        "recall": 0.9404761904761905,
+        "value_recall": 0.971444992991196,
         "attacks": 28,
-        "attack_recall": 0.7857142857142857,
+        "attack_recall": 1.0,
         "recall_by_type": {
-          "account_takeover": 0.8857142857142857,
-          "card_testing": 0.9176470588235294,
-          "stolen_card_spree": 0.2708333333333333
+          "account_takeover": 1.0,
+          "card_testing": 0.9882352941176471,
+          "stolen_card_spree": 0.8125
         }
       },
       "test": {
         "n_payments": 130510,
         "n_frauds": 173,
-        "average_precision": 0.2866226885259673,
-        "roc_auc": 0.9975455135178478,
-        "threshold": 0.9994732756596424,
-        "alerts": 345,
-        "false_positive_rate": 0.0018106907478306236,
-        "precision": 0.3159420289855073,
-        "recall": 0.630057803468208,
-        "value_recall": 0.6619672129964913,
+        "average_precision": 0.8503526608653489,
+        "roc_auc": 0.9996010342420034,
+        "threshold": 0.9927155579766369,
+        "alerts": 322,
+        "false_positive_rate": 0.0012506042029508122,
+        "precision": 0.4937888198757764,
+        "recall": 0.9190751445086706,
+        "value_recall": 0.9037718147482722,
         "attacks": 29,
-        "attack_recall": 0.7586206896551724,
+        "attack_recall": 1.0,
         "recall_by_type": {
-          "account_takeover": 0.967741935483871,
-          "card_testing": 0.8194444444444444,
-          "stolen_card_spree": 0.2857142857142857
+          "account_takeover": 1.0,
+          "card_testing": 0.9583333333333334,
+          "stolen_card_spree": 0.8428571428571429
         }
       }
     },
     "gradient_boosting": {
       "threshold": 0.00047237970962528495,
-      "fit_seconds": 9.91,
+      "fit_seconds": 9.38,
       "valid": {
         "n_payments": 97542,
         "n_frauds": 168,
@@ -165,8 +165,8 @@
     "is_outside_uk": 0.0
   },
   "latency_ms": {
-    "p50": 7.4296164999623215,
-    "p99": 11.931633339972905
+    "p50": 7.402431000173237,
+    "p99": 10.891123949631947
   },
   "reference": {
     "amount": 19.72,

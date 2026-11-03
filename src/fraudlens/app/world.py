@@ -41,6 +41,7 @@ from fraudlens.model.split import TimeSplit, time_split
 from fraudlens.model.train import predict_scores, train
 
 APP_CONFIG = GeneratorConfig(n_customers=2_000, n_days=45, seed=7)
+SERVED_MODEL = "gradient_boosting"  # winner of the full evaluation in the README
 
 
 @dataclass
@@ -166,7 +167,10 @@ def build_demo_world(config: GeneratorConfig = APP_CONFIG) -> DemoWorld:
     customers, directory, _ = build_world(config)
     transactions = generate_transactions(config)
     features = build_features(transactions)
-    bundle = train(features, importance_repeats=3, seed=config.seed)
+    # The demo world is small (about 13 attacks in its test period), so a validation-based
+    # choice between the two models is close to a coin toss here. Serve the winner of the
+    # full 60-day evaluation instead; the performance page says so openly.
+    bundle = train(features, importance_repeats=3, seed=config.seed, serve=SERVED_MODEL)
     split = time_split(features)
     explainer = ReasonExplainer.from_bundle(bundle)
 

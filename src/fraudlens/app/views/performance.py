@@ -82,10 +82,21 @@ def render() -> None:
         ),
         width="stretch",
     )
+    served = MODEL_NAMES[bundle["model_name"]]
+    if bundle.get("selected_by") == "fixed":
+        choice = (
+            f"The app serves **{served}**, the clear winner of the full 60-day evaluation "
+            "(651,379 payments, 29 attacks; see the README). This demo world is much smaller, "
+            "with only a handful of attacks to test on, so the two models can swap places "
+            "here: that is noise, and exactly why the choice is made on the larger evaluation."
+        )
+    else:
+        choice = (
+            f"The saved model is **{served}**, picked on validation data, never on the test set."
+        )
     st.caption(
         "Both models use the same alert budget: at most 1 false alarm per 1,000 genuine "
-        f"payments. The saved model is **{MODEL_NAMES[bundle['model_name']]}**, picked on "
-        "validation data, never on the test set."
+        f"payments. {choice}"
     )
 
     st.subheader("The false-alarm trade-off")

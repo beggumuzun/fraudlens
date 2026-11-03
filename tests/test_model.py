@@ -98,3 +98,32 @@ def test_saved_model_gives_identical_scores(bundle, features, tmp_path):
     )
     assert loaded["threshold"] == bundle["threshold"]
     assert (tmp_path / "metrics.json").exists()
+
+
+def test_baseline_log_transforms_only_non_negative_skewed_features(features):
+    """log1p is only safe on values >= 0: every skewed feature must stay non-negative."""
+    from fraudlens.model.train import SKEWED_FEATURES
+
+    assert (features[SKEWED_FEATURES] >= 0).all().all()
+
+
+def test_baseline_can_be_saved_and_reloaded(features, tmp_path):
+    import joblib
+
+    from fraudlens.model.train import make_logistic_regression
+
+    model = make_logistic_regression(seed=0).fit(features, features["is_fraud"])
+    joblib.dump(model, tmp_path / "baseline.joblib")
+    reloaded = joblib.load(tmp_path / "baseline.joblib")
+    sample = features.head(50)
+    np.testing.assert_allclose(predict_scores(model, sample), predict_scores(reloaded, sample))
+
+
+def test_a_model_can_be_served_by_an_earlier_decision(features):
+    from fraudlens.model import train
+
+    bundle = train(features, max_fpr=0.01, importance_repeats=1, serve="logistic_regression")
+    assert bundle["model_name"] == "logistic_regression"
+    assert bundle["selected_by"] == "fixed"
+    with pytest.raises(ValueError):
+        train(features, importance_repeats=1, serve="random_forest")
