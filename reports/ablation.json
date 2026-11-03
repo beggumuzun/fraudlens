@@ -1,0 +1,22 @@
+{
+  "feature": "device_card_count",
+  "max_fpr": 0.001,
+  "with_feature": {
+    "average_precision": 0.9696,
+    "recall": 0.9827,
+    "attack_recall": 1.0,
+    "false_positive_rate": 0.00105,
+    "ring_attacks": 11,
+    "caught": 1.0,
+    "caught_on_first_payment": 1.0
+  },
+  "without_feature": {
+    "average_precision": 0.9698,
+    "recall": 0.9827,
+    "attack_recall": 1.0,
+    "false_positive_rate": 0.00106,
+    "ring_attacks": 11,
+    "caught": 1.0,
+    "caught_on_first_payment": 1.0
+  }
+}

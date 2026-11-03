@@ -6,13 +6,14 @@ from fraudlens.features.definitions import (
     FEATURE_COLUMNS,
     NUMERIC_FEATURES,
 )
-from fraudlens.features.online import OnlineFeatureStore
+from fraudlens.features.online import OnlineFeatureStore, OutOfOrderError
 
 __all__ = [
     "CATEGORICAL_FEATURES",
     "FEATURE_COLUMNS",
     "NUMERIC_FEATURES",
     "OnlineFeatureStore",
+    "OutOfOrderError",
     "build_features",
     "feature_report",
 ]

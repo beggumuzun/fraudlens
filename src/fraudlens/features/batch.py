@@ -29,11 +29,10 @@ from fraudlens.features.definitions import (
     SMALL_AMOUNT_GBP,
     WINDOWS_S,
     amount_stats,
+    device_key,
     haversine_km,
     outside_uk,
 )
-
-IN_STORE_DEVICE = "__in_store__"
 
 
 def _prev_cumsum(values: pd.Series, groups: pd.Series) -> pd.Series:
@@ -78,7 +77,11 @@ def _other_cards_on_device(df: pd.DataFrame) -> pd.Series:
 
 
 def build_features(transactions: pd.DataFrame) -> pd.DataFrame:
-    """Return one row of features per transaction, in the same order as the input."""
+    """Return one row of features per transaction, in the same order as the input.
+
+    Payments of one card are processed in (timestamp, transaction_id) order. The online
+    engine enforces the same order on arrival, so ties are broken identically in both.
+    """
     df = transactions.reset_index(drop=True)
     # Process card by card, oldest first. The index keeps each row's original position.
     df = df.loc[df.sort_values(["card_id", "timestamp", "transaction_id"], kind="stable").index]
@@ -143,7 +146,8 @@ def build_features(transactions: pd.DataFrame) -> pd.DataFrame:
 
     # --- Device ---
     online = df["channel"] == "online"
-    by_device = df.assign(_device=df["device_id"].fillna(IN_STORE_DEVICE)).groupby(
+    keys = [device_key(d, o) for d, o in zip(df["device_id"], online, strict=True)]
+    by_device = df.assign(_device=keys).groupby(
         ["card_id", "_device"]
     )
     out["is_new_device"] = (online & (by_device.cumcount() == 0)).astype(int)
@@ -172,7 +176,10 @@ def feature_report(features: pd.DataFrame) -> pd.DataFrame:
 
 def load_transactions(path: Path) -> pd.DataFrame:
     """Read a transactions or features CSV with the right column types."""
-    text_columns = {"device_id": "object", "fraud_type": "object"}
+    text_columns = {
+        column: "object"
+        for column in ("device_id", "fraud_type", "ring_id", "breach_ring_id", "transaction_id")
+    }
     return pd.read_csv(path, parse_dates=["timestamp"], dtype=text_columns, low_memory=False)
 
 

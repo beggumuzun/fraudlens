@@ -7,6 +7,7 @@ from fraudlens.features import (
     FEATURE_COLUMNS,
     NUMERIC_FEATURES,
     OnlineFeatureStore,
+    OutOfOrderError,
     build_features,
 )
 from fraudlens.features.definitions import LABEL_COLUMNS, NO_HISTORY_GAP_S
@@ -171,3 +172,104 @@ def test_ring_devices_light_up_the_network_feature(features):
     assert ring_rows["device_card_count"].mean() > 10 * max(
         genuine["device_card_count"].mean(), 0.01
     )
+
+
+# --- hand-made edge cases the generated data never produces ---
+
+
+def assert_engines_agree(rows: list[dict]) -> pd.DataFrame:
+    """Batch features of ``rows`` must equal the online engine fed in canonical order."""
+    df = pd.DataFrame(rows)
+    batch = build_features(df).set_index("transaction_id")
+    store = OnlineFeatureStore()
+    canonical = df.sort_values(["timestamp", "transaction_id"]).to_dict("records")
+    online = pd.DataFrame(
+        [store.process(txn) for txn in canonical],
+        index=[txn["transaction_id"] for txn in canonical],
+    ).loc[batch.index]
+    for column in NUMERIC_FEATURES:
+        np.testing.assert_allclose(
+            online[column].to_numpy(), batch[column].to_numpy(), atol=1e-9, err_msg=column
+        )
+    return batch
+
+
+def test_online_payments_without_a_device_agree():
+    # Two online payments that sent no device ID: only the first is a "new device".
+    batch = assert_engines_agree(
+        [
+            make_txn(0, 0, channel="online", device=None),
+            make_txn(1, 10, channel="online", device=None),
+            make_txn(2, 20, channel="online", device="PHONE"),
+        ]
+    )
+    assert batch["is_new_device"].tolist() == [1, 0, 1]
+
+
+def test_same_timestamp_ties_are_broken_by_transaction_id_in_both_engines():
+    # T2 is listed first, but T1 comes first in the canonical (timestamp, id) order.
+    batch = assert_engines_agree(
+        [make_txn(5, 0, 2.0), make_txn(2, 30, 500.0), make_txn(1, 30, 1.0)]
+    )
+    assert batch.loc["T0000001", "n_prev_txns"] == 1
+    assert batch.loc["T0000002", "n_prev_txns"] == 2
+    # Same moment -> the earlier-id payment is NOT inside T2's velocity window [t-10m, t).
+    assert batch.loc["T0000002", "txn_count_10m"] == 0
+
+
+def test_online_engine_rejects_payments_that_arrive_out_of_order():
+    store = OnlineFeatureStore()
+    store.process(make_txn(2, 30))
+    with pytest.raises(OutOfOrderError):
+        store.process(make_txn(1, 10))  # older timestamp
+    with pytest.raises(OutOfOrderError):
+        store.process(make_txn(1, 30))  # same time, smaller id: batch would put it first
+    with pytest.raises(OutOfOrderError):
+        store.update(make_txn(1, 10))
+    store.process(make_txn(3, 30))  # same time, larger id: fine
+    store.process(make_txn(0, 40, card="OTHER"))  # another card has its own history
+    assert store.compute(make_txn(9, 50))["n_prev_txns"] == 2
+
+
+def test_zscore_is_not_fooled_by_rounding_noise():
+    # Five identical £0.10 payments have no spread at all. Float cancellation used to
+    # turn that into a tiny std and a z-score of +50 for a £0.11 payment.
+    rows = [make_txn(i, i, 0.10) for i in range(5)] + [make_txn(5, 5, 0.11)]
+    batch = assert_engines_agree(rows)
+    assert batch["amount_zscore"].iloc[-1] == 0.0
+    # A real spread still gives a real z-score.
+    varied = [make_txn(i, i, a) for i, a in enumerate([10, 12, 11, 9, 10, 40])]
+    assert assert_engines_agree(varied)["amount_zscore"].iloc[-1] > 10
+
+
+def test_a_late_payment_on_another_card_is_rejected_too():
+    # Shared devices link cards: B arriving late would change C's device count after the
+    # fact, so the order check is global, not per card.
+    store = OnlineFeatureStore()
+    store.process(make_txn(0, 0, card="A", channel="online", device="LAPTOP"))
+    store.process(make_txn(2, 20, card="C", channel="online", device="LAPTOP"))
+    with pytest.raises(OutOfOrderError):
+        store.process(make_txn(1, 10, card="B", channel="online", device="LAPTOP"))
+
+
+def test_in_store_payments_never_make_a_missing_device_look_familiar():
+    # A fraudster who strips the device ID is still on a "new device" the first time,
+    # even if the card has been used in shops before.
+    batch = assert_engines_agree(
+        [
+            make_txn(0, 0, channel="in_store"),
+            make_txn(1, 10, channel="online", device=None),
+            make_txn(2, 20, channel="online", device=None),
+        ]
+    )
+    assert batch["is_new_device"].tolist() == [0, 1, 0]
+    assert batch["new_device_24h"].tolist() == [0, 1, 1]
+
+
+def test_numeric_transaction_ids_are_ordered_as_numbers():
+    store = OnlineFeatureStore()
+    rows = [make_txn(0, 0) | {"transaction_id": i} for i in (9, 10)]
+    for txn in rows:
+        store.process(txn)  # 9 then 10 at the same moment: fine (as strings "10" < "9")
+    with pytest.raises(OutOfOrderError):
+        store.process(make_txn(0, 0) | {"transaction_id": 8})

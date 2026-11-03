@@ -1,0 +1,23 @@
+{
+  "features": {
+    "runs": 5000,
+    "p50_ms": 0.059,
+    "p99_ms": 0.141
+  },
+  "score": {
+    "runs": 1000,
+    "p50_ms": 7.364,
+    "p99_ms": 13.991
+  },
+  "explain": {
+    "runs": 200,
+    "p50_ms": 15.25,
+    "p99_ms": 25.794
+  },
+  "model": "gradient_boosting",
+  "machine": {
+    "python": "3.13.18",
+    "scikit_learn": "1.9.1",
+    "processor": "x86_64"
+  }
+}

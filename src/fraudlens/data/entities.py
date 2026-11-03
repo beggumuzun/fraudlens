@@ -165,10 +165,12 @@ def make_record(
     is_fraud: bool,
     fraud_type: str | None = None,
     ring_id: str | None = None,
+    breach_ring_id: str | None = None,
 ) -> dict:
     """One transaction as a plain dict. ``offset_s`` = seconds since the simulation start.
 
-    ``ring_id`` names the fraud ring behind an attack (ground truth, never a model input).
+    Ground truth, never a model input: ``ring_id`` names the fraud ring behind an attack,
+    ``breach_ring_id`` marks the genuine payment where a ring stole the card's details.
     """
     return {
         "offset_s": int(offset_s),
@@ -185,4 +187,5 @@ def make_record(
         "is_fraud": int(is_fraud),
         "fraud_type": fraud_type,
         "ring_id": ring_id,
+        "breach_ring_id": breach_ring_id,
     }

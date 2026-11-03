@@ -14,7 +14,7 @@ dependencies = [
     "pandas>=2.1",
     "scikit-learn>=1.4",
     "joblib>=1.3",
-    "streamlit>=1.45",
+    "streamlit>=1.55",
     "altair>=5",
 ]
 
@@ -30,6 +30,8 @@ fraudlens-features = "fraudlens.features.batch:main"
 fraudlens-train = "fraudlens.model.train:main"
 fraudlens-explain = "fraudlens.explain.cli:main"
 fraudlens-rings = "fraudlens.graph.cli:main"
+fraudlens-ablation = "fraudlens.model.ablation:main"
+fraudlens-bench = "fraudlens.bench:main"
 fraudlens-app = "fraudlens.app.cli:main"
 
 [tool.setuptools.packages.find]

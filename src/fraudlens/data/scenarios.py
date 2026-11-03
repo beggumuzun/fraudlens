@@ -132,6 +132,7 @@ def breach_purchase(
         lon=customer.home_lon + rng.normal(0, 0.01),
         device_id=customer.device_id,
         is_fraud=False,
+        breach_ring_id=ring.actor.ring_id,  # answer key: this is where the details leaked
     )
 
 

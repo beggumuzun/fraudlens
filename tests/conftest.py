@@ -9,11 +9,16 @@ from fraudlens.model import train
 
 
 @pytest.fixture(scope="session")
-def model_features() -> pd.DataFrame:
+def model_transactions() -> pd.DataFrame:
     config = GeneratorConfig(
         n_customers=400, n_days=30, seed=11, fraud_customer_share=0.1, travel_customer_share=0.05
     )
-    return build_features(generate_transactions(config))
+    return generate_transactions(config)
+
+
+@pytest.fixture(scope="session")
+def model_features(model_transactions) -> pd.DataFrame:
+    return build_features(model_transactions)
 
 
 @pytest.fixture(scope="session")

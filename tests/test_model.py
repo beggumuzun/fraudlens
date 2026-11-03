@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fraudlens.bench import run as run_benchmark
 from fraudlens.model import (
     evaluate,
     load_bundle,
@@ -10,6 +11,8 @@ from fraudlens.model import (
     threshold_at_fpr,
     time_split,
 )
+from fraudlens.model.ablation import ring_attack_recall
+from fraudlens.model.ablation import run as run_ablation
 
 
 @pytest.fixture(scope="module")
@@ -127,3 +130,41 @@ def test_a_model_can_be_served_by_an_earlier_decision(features):
     assert bundle["selected_by"] == "fixed"
     with pytest.raises(ValueError):
         train(features, importance_repeats=1, serve="random_forest")
+
+
+# --- ablation and benchmark tooling ---
+
+
+def test_ring_attack_recall_by_hand():
+    scored = pd.DataFrame(
+        {
+            "card_id": ["A", "A", "B", "B", "C"],
+            "timestamp": pd.to_datetime(
+                ["2026-01-01 10:00", "2026-01-01 10:05"] * 2 + ["2026-01-02 10:00"]
+            ),
+            "ring_id": ["R1", "R1", "R1", "R1", None],
+            "score": [0.9, 0.2, 0.1, 0.8, 0.99],
+        }
+    )
+    # A: first payment caught. B: caught only on its second. C is not a ring attack.
+    assert ring_attack_recall(scored, 0.5) == {
+        "ring_attacks": 2,
+        "caught": 1.0,
+        "caught_on_first_payment": 0.5,
+    }
+
+
+def test_ablation_trains_both_variants(features):
+    result = run_ablation(features, max_fpr=0.01)
+    assert result["feature"] == "device_card_count"
+    for variant in ("with_feature", "without_feature"):
+        assert 0 <= result[variant]["average_precision"] <= 1
+    with pytest.raises(ValueError):
+        run_ablation(features, feature="not_a_feature")
+
+
+def test_benchmark_times_every_live_step(model_transactions, features, bundle):
+    result = run_benchmark(model_transactions, features, bundle, n_payments=200, n_explain=5)
+    for step in ("features", "score", "explain"):
+        assert result[step]["runs"] > 0
+        assert 0 < result[step]["p50_ms"] <= result[step]["p99_ms"]

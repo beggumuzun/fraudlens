@@ -52,12 +52,28 @@ def test_live_store_starts_exactly_at_the_test_period(world):
 
 
 def test_snapshot_leaves_the_shared_history_untouched(world):
-    card = world.cards.index[0]
-    before = world.store_full.compute(world.test_transactions.iloc[0].to_dict() | {"card_id": card})
+    """A what-if payment on a snapshot must not leak into the shared store, including the
+    device links between cards (the part the old test never exercised)."""
+    card, other = world.cards.index[0], world.cards.index[1]
+    when = world.transactions["timestamp"].max() + pd.Timedelta(hours=1)
+    payment = world.test_transactions.iloc[0].to_dict() | {
+        "card_id": card,
+        "channel": "online",
+        "device_id": "WHAT_IF_DEVICE",
+        "timestamp": when,
+        "transaction_id": "SIM001",
+    }
+    probe = payment | {"card_id": other, "timestamp": when + pd.Timedelta(minutes=5)}
+    before_card = world.store_full.compute(payment)
+    before_other = world.store_full.compute(probe)
+
     copy_ = world.store_full.snapshot([card])
-    copy_.update(world.test_transactions.iloc[0].to_dict() | {"card_id": card})
-    after = world.store_full.compute(world.test_transactions.iloc[0].to_dict() | {"card_id": card})
-    assert before == after
+    copy_.process(payment)
+    assert copy_.compute(probe)["device_card_count"] == 1  # the copy saw the link...
+
+    assert world.store_full.compute(payment) == before_card  # ...the shared store did not
+    assert world.store_full.compute(probe) == before_other
+    assert before_other["device_card_count"] == 0
 
 
 # --- the screens ---
@@ -88,13 +104,62 @@ def test_test_a_payment_alerts_on_night_shopping_abroad():
     assert "Held for review" in page, "expected an alert for night jewellery shopping abroad"
 
 
-def test_attack_simulator_reports_an_outcome():
+def verdict(at: AppTest) -> str:
+    page = " ".join(m.value for m in at.markdown)
+    if "Caught on the very first payment" in page:
+        return "first"
+    if "Caught on payment" in page:
+        return "later"
+    assert "Missed" in page, "a verdict is always shown"
+    return "missed"
+
+
+def expected_verdict(result: pd.DataFrame) -> str:
+    alerts = result.index[result["alert"]]
+    if len(alerts) == 0:
+        return "missed"
+    return "first" if alerts[0] == 0 else "later"
+
+
+def launch(attack: str | None = None) -> AppTest:
     at = run_page("simulator")
     at.toggle[0].set_value(False).run()  # no step-by-step animation in tests
+    if attack is not None:
+        at.radio(key="sim_attack").set_value(attack).run()
     next(b for b in at.button if b.label == "Launch attack").click().run()
     assert not at.exception, at.exception
-    page = " ".join(m.value for m in at.markdown)
-    assert "Caught" in page or "Missed" in page  # a verdict is always shown
+    return at
+
+
+def test_attack_simulator_shows_the_verdict_the_model_gives(world):
+    """The page's verdict must be exactly what the model did with that attack."""
+    from fraudlens.app.views.simulator import _run_attack
+
+    at = launch()
+    card, attack, seed = at.session_state["sim_key"]
+    assert verdict(at) == expected_verdict(_run_attack(world, card, attack, seed))
+
+
+def test_simulator_can_replay_a_known_ring(world):
+    from fraudlens.app.views.simulator import RING_ATTACK, _run_attack
+
+    at = launch(RING_ATTACK)
+    card, attack, seed = at.session_state["sim_key"]
+    assert attack == RING_ATTACK
+    assert verdict(at) == expected_verdict(_run_attack(world, card, attack, seed))
+
+
+def test_ring_attacks_are_caught(world):
+    """Fresh ring attacks on 15 clean cards of the small test world: all are caught.
+
+    (This world's model learns from far fewer attacks than the full demo world's, so
+    some are caught on their second or third payment rather than the first.)
+    """
+    from fraudlens.app.views.simulator import RING_ATTACK, _run_attack
+
+    clean = world.cards[world.cards["frauds"] == 0].index[:15]
+    results = [_run_attack(world, card, RING_ATTACK, seed=i) for i, card in enumerate(clean)]
+    assert all(r["alert"].any() for r in results)
 
 
 def test_model_performance_renders_the_trade_off():
@@ -110,19 +175,10 @@ def test_fraud_rings_page_finds_rings_and_a_leak():
     assert "likely point of compromise" in page
 
 
-def test_simulator_can_replay_a_known_ring():
-    at = run_page("simulator")
-    at.toggle[0].set_value(False).run()
-    at.radio(key="sim_attack").set_value("ring_card_testing").run()
-    next(b for b in at.button if b.label == "Launch attack").click().run()
-    assert not at.exception, at.exception
-    page = " ".join(m.value for m in at.markdown)
-    assert "Caught" in page or "Missed" in page
-
-
-def test_a_known_ring_device_is_recognised_from_the_first_payment(world):
-    """Model-independent: the ring's device was seen on other cards, so the network feature
-    is already non-zero on the attack's very first payment."""
+def test_a_known_ring_device_gives_the_network_feature_its_value(world):
+    """The ring's device was seen on other cards, so the network feature is already non-zero
+    on the attack's very first payment. (Whether it changes the SCORE is a separate
+    question, answered by the ablation in the README: on this data, barely.)"""
     from fraudlens.app.world import features_frame, strip_labels
     from fraudlens.data.scenarios import card_testing
 

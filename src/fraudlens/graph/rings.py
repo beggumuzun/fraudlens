@@ -76,15 +76,24 @@ def point_of_compromise(
 ) -> pd.DataFrame:
     """Merchants the victims paid at before their first alert, ranked by how unusual that is.
 
-    ``first_alert`` maps each victim card to the time it was first flagged. Only genuine-
-    looking payments before that moment are considered: the leak happened before the attack.
-    ``lift`` compares the share of victims who paid there with the share of all cards that
-    did; a breached shop scores far above 1.
+    ``first_alert`` maps each victim card to the time of its first alert. For each victim
+    we take its payments in the ``lookback_days`` before that moment: the leak happened
+    before the attack. No payment is filtered out, so fraud payments can be among them:
+    ones the model missed, or, when only recent alerts are passed in (out-of-sample
+    analysis), earlier ones it did flag. They rarely matter, because fraudsters' shops
+    differ from victim to victim while the breached shop is shared by all of them.
+
+    ``lift`` compares the share of victims who paid at a shop with the share of all cards
+    that paid there over the same period, which ends at the ring's latest first alert, so
+    nothing from after the investigation point is used. A breached shop scores far above 1.
     """
+    columns = ["merchant_id", "merchant_category", "merchant_city", "victims", "lift"]
     if not first_alert:
-        return pd.DataFrame(columns=["merchant_id", "merchant_category", "victims", "lift"])
+        return pd.DataFrame(columns=columns)
     ts = transactions
     victims = list(first_alert)
+    window_start = min(first_alert.values()) - pd.Timedelta(days=lookback_days)
+    window_end = max(first_alert.values())
     before = []
     for card in victims:
         end = first_alert[card]
@@ -97,8 +106,8 @@ def point_of_compromise(
     per_merchant = visited.groupby(["merchant_id", "merchant_category", "merchant_city"]).agg(
         victims=("card_id", "nunique")
     )
-    all_cards = ts["card_id"].nunique()
-    reach = ts.groupby("merchant_id")["card_id"].nunique() / all_cards  # share of all cards
+    period = ts[(ts["timestamp"] >= window_start) & (ts["timestamp"] < window_end)]
+    reach = period.groupby("merchant_id")["card_id"].nunique() / period["card_id"].nunique()
     table = per_merchant.reset_index()
     table["victim_share"] = table["victims"] / len(victims)
     table["all_cards_share"] = table["merchant_id"].map(reach)
@@ -124,21 +133,49 @@ def ring_report(
     return groups, compromise
 
 
-def score_against_truth(groups: list[LinkedGroup], transactions: pd.DataFrame) -> dict:
-    """How well the detected rings match the real ones (ground truth labels, for evaluation)."""
-    truth = transactions.dropna(subset=["ring_id"]).groupby("ring_id")["card_id"].agg(set).to_dict()
+def _true_rings(transactions: pd.DataFrame) -> dict[str, set[str]]:
+    rings = transactions.dropna(subset=["ring_id"])
+    return rings.groupby("ring_id")["card_id"].agg(set).to_dict()
+
+
+def true_breached_shops(transactions: pd.DataFrame) -> dict[str, str]:
+    """Answer key: ring id -> the shop where its victims' card details leaked."""
+    if "breach_ring_id" not in transactions:
+        return {}
+    breaches = transactions.dropna(subset=["breach_ring_id"])
+    return breaches.groupby("breach_ring_id")["merchant_id"].first().to_dict()
+
+
+def score_against_truth(
+    groups: list[LinkedGroup],
+    transactions: pd.DataFrame,
+    compromise: dict[str, pd.DataFrame] | None = None,
+) -> dict:
+    """How well the detected rings match the real ones (ground truth labels, for evaluation).
+
+    A real ring counts as found when a detected ring overlaps it with Jaccard >= 0.5. With
+    ``compromise`` given, also counts the found rings whose top-ranked shop is the shop that
+    was really breached.
+    """
+    truth = _true_rings(transactions)
+    shops = true_breached_shops(transactions)
     rings = [g for g in groups if g.is_ring]
-    matched, cards_found = 0, 0
-    for members in truth.values():
-        best = max(
-            (len(members & set(g.cards)) / len(members | set(g.cards)) for g in rings),
-            default=0.0,
-        )
+    matched, cards_found, shops_found = 0, 0, 0
+    for ring_id, members in truth.items():
+        best_group, best = None, 0.0
+        for g in rings:
+            overlap = len(members & set(g.cards)) / len(members | set(g.cards))
+            if overlap > best:
+                best_group, best = g, overlap
         matched += best >= 0.5
         cards_found += max((len(members & set(g.cards)) for g in rings), default=0)
+        if best >= 0.5 and compromise is not None and ring_id in shops:
+            candidates = compromise.get(best_group.group_id)
+            if candidates is not None and len(candidates):
+                shops_found += candidates.iloc[0]["merchant_id"] == shops[ring_id]
     ring_cards = set().union(*truth.values()) if truth else set()
     false_groups = sum(1 for g in rings if not set(g.cards) & ring_cards)
-    return {
+    result = {
         "true_rings": len(truth),
         "rings_found": int(matched),
         "victim_cards": len(ring_cards),
@@ -147,3 +184,6 @@ def score_against_truth(groups: list[LinkedGroup], transactions: pd.DataFrame) -
         "false_ring_groups": int(false_groups),
         "linked_groups_checked": len(groups),
     }
+    if compromise is not None:
+        result["breached_shop_found"] = int(shops_found)
+    return result

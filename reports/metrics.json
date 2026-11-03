@@ -1,5 +1,6 @@
 {
   "model_name": "gradient_boosting",
+  "selected_by": "validation",
   "threshold": 0.00047237970962528495,
   "max_fpr": 0.001,
   "feature_columns": [
@@ -30,7 +31,7 @@
     "merchant_category"
   ],
   "version": "0.1.0",
-  "trained_at": "2026-11-03T01:36:54+00:00",
+  "trained_at": "2026-11-03T13:08:11+00:00",
   "split": {
     "train": {
       "rows": 423327,
@@ -54,7 +55,7 @@
   "candidates": {
     "logistic_regression": {
       "threshold": 0.9927155579766369,
-      "fit_seconds": 3.96,
+      "fit_seconds": 4.46,
       "valid": {
         "n_payments": 97542,
         "n_frauds": 168,
@@ -96,7 +97,7 @@
     },
     "gradient_boosting": {
       "threshold": 0.00047237970962528495,
-      "fit_seconds": 9.38,
+      "fit_seconds": 10.64,
       "valid": {
         "n_payments": 97542,
         "n_frauds": 168,
@@ -165,8 +166,8 @@
     "is_outside_uk": 0.0
   },
   "latency_ms": {
-    "p50": 7.402431000173237,
-    "p99": 10.891123949631947
+    "p50": 10.29092299995682,
+    "p99": 66.95490172989102
   },
   "reference": {
     "amount": 19.72,

@@ -10,7 +10,9 @@ from fraudlens.graph import (
     find_rings,
     linked_groups,
     point_of_compromise,
+    ring_report,
     score_against_truth,
+    true_breached_shops,
 )
 
 # --- union-find ---
@@ -149,9 +151,31 @@ def test_every_generated_ring_is_recovered(ring_world):
 
 
 def test_breached_shop_is_found_for_every_ring(ring_world):
+    truth = true_breached_shops(ring_world)
     fraud = ring_world[ring_world["ring_id"].notna()]
-    for _, victims in fraud.groupby("ring_id"):
+    assert set(truth) == set(fraud["ring_id"])  # every ring has a recorded breach
+    for ring_id, victims in fraud.groupby("ring_id"):
         first_alert = victims.groupby("card_id")["timestamp"].min().to_dict()
         top = point_of_compromise(ring_world, first_alert).iloc[0]
+        assert top["merchant_id"] == truth[ring_id]  # the shop that really leaked
         assert top["victims"] == len(first_alert)  # every victim paid there beforehand
         assert top["lift"] > 2
+
+
+def test_full_report_names_the_right_shop(ring_world):
+    alerts = ring_world.loc[ring_world["is_fraud"] == 1, ["card_id", "timestamp"]]
+    groups, compromise = ring_report(ring_world, alerts)
+    score = score_against_truth(groups, ring_world, compromise)
+    assert score["breached_shop_found"] == score["true_rings"]
+
+
+def test_shop_popularity_after_the_attack_is_not_used():
+    # BREACHED becomes hugely popular only AFTER the alerts; that must not dilute its lift.
+    rows = [_pay(f"C{i}", None, 1, merchant="OTHER") for i in range(10)]
+    rows += [_pay(v, None, 1, merchant="BREACHED") for v in ("V1", "V2")]
+    rows += [_pay(f"C{i}", None, 20, merchant="BREACHED") for i in range(10)]
+    tx = pd.DataFrame(rows)
+    first_alert = {v: pd.Timestamp("2026-01-05") for v in ("V1", "V2")}
+    top = point_of_compromise(tx, first_alert).iloc[0]
+    assert top["merchant_id"] == "BREACHED"
+    assert top["all_cards_share"] == pytest.approx(2 / 12)  # only payments before the alerts

@@ -61,7 +61,7 @@ class DemoWorld:
     store_at_test_start: OnlineFeatureStore
     store_full: OnlineFeatureStore
     cards: pd.DataFrame  # one row per card: profile used by the app pages
-    alerts: pd.DataFrame  # every payment the model flags, across the whole history
+    alerts: pd.DataFrame  # payments the model flags, outside its training period
     groups: list[LinkedGroup]  # cards linked through shared devices
     compromise: dict[str, pd.DataFrame]  # ring group id -> likely breached shops
     ring_actors: dict[str, Actor]  # group id -> the ring's devices, for new simulated attacks
@@ -186,8 +186,13 @@ def build_demo_world(config: GeneratorConfig = APP_CONFIG) -> DemoWorld:
     test_transactions = transactions[transactions["timestamp"] >= test_start].reset_index(drop=True)
     store_at_test_start, store_full = _warm_stores(transactions, test_start)
 
+    # Ring analysis uses only alerts the model could not have memorised: payments from the
+    # validation and test periods. On its own training period it has seen the answers.
     flagged = predict_scores(bundle["model"], features) >= bundle["threshold"]
-    alerts = transactions.loc[flagged, ["transaction_id", "card_id", "timestamp", "device_id"]]
+    unseen = (transactions["timestamp"] >= split.valid["timestamp"].min()).to_numpy()
+    alerts = transactions.loc[
+        flagged & unseen, ["transaction_id", "card_id", "timestamp", "device_id"]
+    ]
     groups, compromise = ring_report(transactions, alerts)
 
     return DemoWorld(

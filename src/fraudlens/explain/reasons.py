@@ -2,9 +2,9 @@
 
 Method: exact Shapley values over groups of features.
 
-1. Features are grouped by meaning (location, velocity, amount, ...): 7 groups.
+1. Features are grouped by meaning (location, velocity, amount, ...): 8 groups.
 2. A *typical genuine payment* (medians from the training data) is the reference.
-3. The payment is re-scored for all 2^7 = 128 mixes of "this group has its real value"
+3. The payment is re-scored for all 2^8 = 256 mixes of "this group has its real value"
    and "this group looks typical".
 4. Each group gets its Shapley value: its average extra contribution over all those
    mixes. The values add up exactly to (score of this payment - score of a typical one).
@@ -18,8 +18,14 @@ Why groups instead of single features? Related features carry the same signal ("
 the UK" and "4,800 km from home"); split apart, each would get only part of the credit.
 
 Scores are compared in log-odds, the model's own internal scale, where contributions
-add up more naturally than in probabilities. All 128 variants of all payments are
-scored in one model call: explaining one payment takes a few milliseconds.
+add up more naturally than in probabilities. All 256 variants of all payments are
+scored in one model call (``fraudlens-bench`` measures how long that takes).
+
+The shared-device count has a group of its own ("network"). Inside the device group it
+borrowed the credit of "new device": every ring payment is also from a new device, so
+"used with N other cards" was printed even when that link changed nothing in the score.
+In its own group it is described only when it carries at least 10% of the score, like
+every other group.
 """
 
 from __future__ import annotations
@@ -44,7 +50,8 @@ FEATURE_GROUPS: dict[str, list[str]] = {
         "small_txn_count_10m",
     ],
     "amount": ["amount", "log_amount", "amount_to_avg_ratio", "amount_zscore"],
-    "device": ["is_new_device", "new_device_24h", "is_online", "device_card_count"],
+    "device": ["is_new_device", "new_device_24h", "is_online"],
+    "network": ["device_card_count"],
     "timing": ["hour", "is_night", "hour_familiarity"],
     "merchant": ["merchant_category", "is_new_category"],
     "history": ["n_prev_txns"],
@@ -114,11 +121,13 @@ def describe(group: str, f: pd.Series) -> str:
                 f"(this card usually spends about £{usual:,.0f})"
             )
         return f"£{f['amount']:,.2f}, close to this card's usual £{usual:,.0f}"
+    if group == "network":
+        others = int(f["device_card_count"])
+        if others == 0:
+            return "This device has not been used with any other card"
+        cards = "another card" if others == 1 else f"{others} other cards"
+        return f"This device has already been used with {cards}"
     if group == "device":
-        if f["is_online"] and f["device_card_count"] >= 1:
-            others = int(f["device_card_count"])
-            cards = "another card" if others == 1 else f"{others} other cards"
-            return f"This device has already been used with {cards}"
         if f["is_online"] and f["is_new_device"]:
             return "Online payment from a device never used with this card before"
         if f["is_online"] and f["new_device_24h"]:
@@ -163,8 +172,8 @@ class ReasonExplainer:
         """
         x = rows[FEATURE_COLUMNS].reset_index(drop=True)
         n = len(x)
-        # One big table: 128 copies of the batch, coalition by coalition. Built column by
-        # column with numpy (fast) rather than 128 DataFrame copies (slow).
+        # One big table: one copy of the batch per coalition (256). Built column by column
+        # with numpy (fast) rather than 256 DataFrame copies (slow).
         variants = {}
         for g, columns in enumerate(FEATURE_GROUPS.values()):
             keep = np.repeat(MASKS[:, g], n)

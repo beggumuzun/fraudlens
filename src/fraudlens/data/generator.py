@@ -52,9 +52,10 @@ COLUMNS = [
     "is_fraud",
     "fraud_type",
     "ring_id",
+    "breach_ring_id",
 ]
 # Columns a live system would never see at scoring time (they are the answer key).
-LABEL_COLUMNS = ("is_fraud", "fraud_type", "ring_id")
+LABEL_COLUMNS = ("is_fraud", "fraud_type", "ring_id", "breach_ring_id")
 
 
 @dataclass(frozen=True)
@@ -230,6 +231,7 @@ def summarise(df: pd.DataFrame) -> dict:
         "fraud_by_type": df["fraud_type"].value_counts().to_dict(),
         "fraud_rings": int(df["ring_id"].nunique()),
         "cards_hit_by_rings": int(df.loc[df["ring_id"].notna(), "card_id"].nunique()),
+        "breached_shops": int(df["breach_ring_id"].notna().groupby(df["merchant_id"]).any().sum()),
         "first_timestamp": str(df["timestamp"].min()),
         "last_timestamp": str(df["timestamp"].max()),
     }

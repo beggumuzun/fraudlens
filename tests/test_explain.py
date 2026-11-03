@@ -136,3 +136,21 @@ def test_sentences_use_real_values():
 
     row["small_txn_count_10m"] = 0.0
     assert describe("velocity", row).startswith("1 payment and")  # singular, not "1 payments"
+
+
+def test_shared_device_is_only_blamed_when_it_moves_the_score():
+    """A ring payment is BOTH from a new device and from a device seen on 12 other cards.
+
+    If the model only reacts to the new device, the explanation must not claim that the
+    shared device gave the payment away (the bug this group split fixed).
+    """
+    row = suspicious_payment().assign(device_card_count=12.0, is_online=1.0)
+
+    new_device_only = stub_explainer(lambda x: 4 * x["is_new_device"])
+    groups = [r["group"] for r in new_device_only.explain(row)[0]["reasons"]]
+    assert groups == ["device"]
+
+    network_only = stub_explainer(lambda x: 0.5 * x["device_card_count"])
+    reasons = network_only.explain(row)[0]["reasons"]
+    assert [r["group"] for r in reasons] == ["network"]
+    assert reasons[0]["text"] == "This device has already been used with 12 other cards"

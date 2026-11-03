@@ -23,6 +23,10 @@ HOUR_BIN_SIZE = 3  # hours are grouped into 8 blocks of 3 hours for habit featur
 NO_HISTORY_GAP_S = 30 * 86_400  # "seconds since last" for a card's very first payment
 MIN_GAP_HOURS = 1 / 60  # floor for travel-speed maths, avoids dividing by zero
 ZSCORE_CLIP = 50.0
+# A spread smaller than this share of the average is rounding noise, not real variation.
+# Without it, five payments of exactly £0.10 gave a "standard deviation" of 1e-9 (float
+# cancellation in sum_sq - n * mean^2) and a £0.11 payment got a z-score of +50.
+STD_REL_TOL = 1e-6
 EARTH_RADIUS_KM = 6_371.0088
 
 # Rough bounding box of the UK: (min_lat, max_lat, min_lon, max_lon).
@@ -63,7 +67,20 @@ CATEGORICAL_FEATURES = ["merchant_category"]
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 ID_COLUMNS = ["transaction_id", "timestamp", "card_id"]
-LABEL_COLUMNS = ["is_fraud", "fraud_type", "ring_id"]
+LABEL_COLUMNS = ["is_fraud", "fraud_type", "ring_id", "breach_ring_id"]
+
+# Device keys for payments without a device ID. Every device-less ONLINE payment of a card
+# counts as the same unknown device (so only the first is "new"); in-store payments get a
+# key of their own and never make an online device look familiar.
+NO_DEVICE = "__no_device__"
+IN_STORE = "__in_store__"
+
+
+def device_key(device_id, online: bool) -> str:
+    """The key both engines use to track which devices a card has paid from."""
+    if isinstance(device_id, str) and device_id:
+        return device_id
+    return NO_DEVICE if online else IN_STORE
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -97,6 +114,7 @@ def amount_stats(n_prev, prev_sum, prev_sum_sq, amount):
         mean = prev_sum / n_prev
         var = (prev_sum_sq - n_prev * mean * mean) / (n_prev - 1)
         std = np.sqrt(np.clip(var, 0.0, None))
+        real_spread = std > STD_REL_TOL * np.abs(mean)
         ratio = np.where(n_prev > 0, amount / mean, 1.0)
-        zscore = np.where((n_prev >= 2) & (std > 0), (amount - mean) / std, 0.0)
+        zscore = np.where((n_prev >= 2) & real_spread, (amount - mean) / std, 0.0)
     return ratio, np.clip(zscore, -ZSCORE_CLIP, ZSCORE_CLIP)

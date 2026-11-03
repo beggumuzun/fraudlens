@@ -7,6 +7,7 @@ from fraudlens.graph.rings import (
     point_of_compromise,
     ring_report,
     score_against_truth,
+    true_breached_shops,
 )
 from fraudlens.graph.union_find import UnionFind
 
@@ -18,4 +19,5 @@ __all__ = [
     "point_of_compromise",
     "ring_report",
     "score_against_truth",
+    "true_breached_shops",
 ]

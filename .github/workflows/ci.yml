@@ -27,3 +27,22 @@ jobs:
 
       - name: Run tests
         run: pytest -v
+
+  oldest-streamlit:
+    # Prove the minimum Streamlit version really works. The app needs 1.51 (width="stretch"
+    # on charts); the headless test harness needs 1.55 (older AppTest versions fail on a
+    # single-choice segmented_control).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install with the oldest supported Streamlit
+        run: pip install -e ".[dev]" "streamlit==1.55.*"
+
+      - name: Run app tests
+        run: pytest -v tests/test_app.py

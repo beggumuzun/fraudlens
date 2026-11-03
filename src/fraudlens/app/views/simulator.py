@@ -28,8 +28,9 @@ RING_ATTACK = "ring_card_testing"
 DESCRIPTIONS = {
     RING_ATTACK: (
         "A fraud ring the bank has already uncovered strikes a new card, from one of the "
-        "same devices. The device has been used on other cards before, and that link alone "
-        "gives the attack away."
+        "same devices. Watch the reasons: a device the card has never used and the burst "
+        "of tiny payments do most of the work. The shared device is shown as its own "
+        "reason only when it really moves the score."
     ),
     "card_testing": (
         "A criminal has the card number. They try a burst of tiny online payments to check "
@@ -50,9 +51,10 @@ def _run_attack(world, card_id: str, attack: str, seed: int) -> pd.DataFrame:
     """Generate the attack, then score it payment by payment on top of the card's history."""
     rng = np.random.default_rng(seed)
     customer = world.customer(card_id)
+    # Strike the day after the data ends: after every card's last payment, so the live
+    # feature engine sees the attack in time order (it rejects payments from the past).
     last_day = (
-        pd.Timestamp(world.cards.loc[card_id, "last_payment"]).normalize()
-        - pd.Timestamp(world.config.start_date)
+        world.transactions["timestamp"].max().normalize() - pd.Timestamp(world.config.start_date)
     ).days
     if attack == RING_ATTACK:
         # The same ring strikes again: card testing from one of its known devices.

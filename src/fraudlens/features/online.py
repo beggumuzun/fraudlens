@@ -9,6 +9,13 @@ Having two engines creates a classic risk called *training/serving skew*: if the
 disagree, the model sees different numbers in production than it was trained on.
 ``tests/test_features.py`` replays a whole dataset through this engine and checks that
 every feature matches the batch engine.
+
+Order matters. The batch engine treats payments in (timestamp, transaction_id) order, so
+this engine refuses a payment that arrives older than the latest one it has recorded, on
+any card (``OutOfOrderError``). The check is global, not per card, because shared devices
+link cards: a late payment on card B would also change what card A's device count should
+have been. A real system would park such a payment and re-process; silently accepting it
+would give negative gaps and features the model never saw in training.
 """
 
 from __future__ import annotations
@@ -30,6 +37,7 @@ from fraudlens.features.definitions import (
     SMALL_AMOUNT_GBP,
     WINDOWS_S,
     amount_stats,
+    device_key,
     haversine_km,
     outside_uk,
 )
@@ -48,7 +56,7 @@ class CardState:
     last_lat: float = 0.0
     last_lon: float = 0.0
     recent: deque = field(default_factory=deque)  # (ts, amount) within the longest window
-    devices: dict = field(default_factory=dict)  # device_id -> first time seen
+    devices: dict = field(default_factory=dict)  # device key -> first time seen
     categories: set = field(default_factory=set)
     hour_bins: Counter = field(default_factory=Counter)
 
@@ -62,11 +70,20 @@ def _device(txn: dict) -> str | None:
     return device if isinstance(device, str) and device else None
 
 
+def _device_key(txn: dict) -> str:
+    return device_key(txn.get("device_id"), txn["channel"] == "online")
+
+
+class OutOfOrderError(ValueError):
+    """A payment arrived older than one already recorded for the same card."""
+
+
 class OnlineFeatureStore:
     def __init__(self) -> None:
         self._cards: dict[str, CardState] = {}
         # device -> {card: first time seen}: the links between cards (shared devices).
         self._device_cards: dict[str, dict[str, float]] = {}
+        self._last: tuple[float, object] | None = None  # (time, transaction_id) of the latest
 
     def __len__(self) -> int:
         return len(self._cards)
@@ -75,10 +92,26 @@ class OnlineFeatureStore:
         """An independent copy holding only these cards (cheap 'what if' experiments)."""
         copy_ = OnlineFeatureStore()
         copy_._device_cards = deepcopy(self._device_cards)  # rings span many cards
+        copy_._last = self._last
         for card_id in card_ids:
             if card_id in self._cards:
                 copy_._cards[card_id] = deepcopy(self._cards[card_id])
         return copy_
+
+    def _check_order(self, txn: dict) -> None:
+        if self._last is None:
+            return
+        t = _seconds(txn["timestamp"])
+        txn_id = txn.get("transaction_id")
+        last_t, last_id = self._last
+        same_time_but_earlier_id = (
+            t == last_t and txn_id is not None and last_id is not None and txn_id < last_id
+        )
+        if t < last_t or same_time_but_earlier_id:
+            raise OutOfOrderError(
+                f"Payment {txn_id} arrived after {last_id}, but is older: payments must be "
+                "processed in (timestamp, transaction_id) order"
+            )
 
     def compute(self, txn: dict) -> dict:
         """Features for ``txn`` using only what has been seen so far. Does not change state."""
@@ -137,8 +170,9 @@ class OnlineFeatureStore:
 
         # Device
         device = _device(txn)
-        first_seen = state.devices.get(device, t)  # unseen device -> first seen right now
-        features["is_new_device"] = float(online and device not in state.devices)
+        key = _device_key(txn)
+        first_seen = state.devices.get(key, t)  # unseen device -> first seen right now
+        features["is_new_device"] = float(online and key not in state.devices)
         features["new_device_24h"] = float(online and t - first_seen < NEW_DEVICE_WINDOW_S)
         other_cards = self._device_cards.get(device, {}) if device is not None else {}
         features["device_card_count"] = float(
@@ -149,10 +183,16 @@ class OnlineFeatureStore:
         return features
 
     def update(self, txn: dict) -> None:
-        """Record ``txn`` in its card's history."""
+        """Record ``txn`` in its card's history.
+
+        Raises ``OutOfOrderError`` if it is older than the latest payment recorded on any
+        card, or has the same timestamp and a smaller transaction_id (the batch tie-break).
+        """
+        self._check_order(txn)
         state = self._cards.setdefault(txn["card_id"], CardState())
         t = _seconds(txn["timestamp"])
         amount = float(txn["amount"])
+        txn_id = txn.get("transaction_id")
 
         state.n += 1
         state.sum_amount += amount
@@ -160,11 +200,12 @@ class OnlineFeatureStore:
         state.sum_lat += float(txn["lat"])
         state.sum_lon += float(txn["lon"])
         state.last_ts = t
+        self._last = (t, txn_id)
         state.last_lat, state.last_lon = float(txn["lat"]), float(txn["lon"])
         state.categories.add(txn["merchant_category"])
         state.hour_bins[pd.Timestamp(txn["timestamp"]).hour // HOUR_BIN_SIZE] += 1
+        state.devices.setdefault(_device_key(txn), t)
         if (device := _device(txn)) is not None:
-            state.devices.setdefault(device, t)
             self._device_cards.setdefault(device, {}).setdefault(txn["card_id"], t)
 
         state.recent.append((t, amount))
@@ -172,7 +213,11 @@ class OnlineFeatureStore:
             state.recent.popleft()
 
     def process(self, txn: dict) -> dict:
-        """Score-time entry point: compute features, then remember the payment."""
+        """Score-time entry point: compute features, then remember the payment.
+
+        The order check runs first, so a late payment is rejected before it is scored.
+        """
+        self._check_order(txn)
         features = self.compute(txn)
         self.update(txn)
         return features

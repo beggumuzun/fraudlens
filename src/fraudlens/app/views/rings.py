@@ -196,6 +196,11 @@ def _ring_detail(world, group) -> None:
                 "the likely point of compromise.</p>",
                 unsafe_allow_html=True,
             )
+            if n < 3:
+                st.caption(
+                    f"Only {n} flagged cards so far, so this is a weak lead: two people "
+                    "sharing one shop can be chance. It firms up as more cards are flagged."
+                )
             shown = table.assign(
                 shop=table["merchant_id"] + ", " + table["merchant_category"].map(category_name),
                 victims=table["victims"].astype(int).astype(str) + f" of {n}",
@@ -252,7 +257,8 @@ def render() -> None:
         "One criminal, many cards. Cards are linked when they pay from the same device. A "
         "linked group is called a ring only when the model has flagged at least two of its "
         "cards, so families sharing a laptop are not accused. Then the victims' own history "
-        "points to the shop where their card details leaked.",
+        "points to the shop where their card details leaked. Only alerts from after the "
+        "model's training period are used: it cannot simply remember the answers.",
     )
     rings = [g for g in world.groups if g.is_ring]
     theme.kpi_panel(
