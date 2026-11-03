@@ -11,6 +11,43 @@ explains *why* each one was flagged, so a fraud analyst can act on it in seconds
 
 ---
 
+## The app
+
+An analyst app (Streamlit) puts the whole system on screen. It needs no data or model
+files: on first launch it generates its own bank of 2,000 customers, trains the model and
+warms up the live feature engine, which takes about 30 seconds.
+
+![Live monitor](docs/screenshots/live-monitor.png)
+
+| Screen | What it shows |
+|---|---|
+| **Live monitor** | Unseen payments replayed in time order through the real-time path (online features, model, explanations). Alerts appear in a queue with their reasons, next to the ground truth. |
+| **Test a payment** | Pick a real customer, describe a new payment (amount, place, time, device) and get the decision and its reasons instantly, from that card's actual history. |
+| **Attack simulator** | Launch a fresh card-testing, account-takeover or stolen-card attack on any customer and see at which payment it is caught and how much money is saved. |
+| **Model performance** | Baseline vs gradient boosting, and a slider for the false-alarm budget showing how many frauds, pounds and attacks each setting catches. |
+
+<details>
+<summary>More screenshots</summary>
+
+**Test a payment**: a night-time jewellery purchase from Lagos on an unknown device
+![Test a payment](docs/screenshots/test-a-payment.png)
+
+**Attack simulator**: a stolen-card spree, caught on the third payment
+![Attack simulator](docs/screenshots/attack-simulator.png)
+
+**Model performance**
+![Model performance](docs/screenshots/model-performance.png)
+
+</details>
+
+Risk is shown on a 0-100 scale: the share of genuine payments that look less suspicious.
+Raw fraud probabilities are tiny because fraud is rare, so "riskier than 99.95% of genuine
+payments" is easier to act on than "score 0.004". Alerts start at 99.9.
+
+```bash
+fraudlens-app        # opens http://localhost:8501
+```
+
 ## Why this project
 
 Card fraud is rare (well under 1% of payments) but expensive, and a bank has only a few
@@ -27,14 +64,13 @@ problem, not just a modelling one:
 
 ```mermaid
 flowchart LR
-    G[Transaction generator] -->|live stream| API[FastAPI scoring service]
-    API --> F[Online feature engine]
-    F --> M[Fraud model]
-    M --> X[Explainer - SHAP]
-    API --> DB[(SQLite / PostgreSQL)]
-    DB --> D[Analyst dashboard]
-    G -->|historical data| T[Training pipeline]
-    T --> M
+    G[Synthetic data engine] -->|history| B[Batch feature engine]
+    B --> T[Training: baseline vs gradient boosting]
+    T --> M[Fraud model + alert threshold]
+    G -->|live payments| O[Online feature engine]
+    O --> M
+    M --> X[Explainer: group Shapley reasons]
+    X --> A[Analyst app]
 ```
 
 ## Roadmap
@@ -47,9 +83,10 @@ flowchart LR
       alert threshold set from a fixed false-alarm budget
 - [x] **4. Explainability**: plain-English reason codes from exact Shapley values over
       feature groups; used to find and fix a shortcut the model had learned
-- [ ] **5. Scoring API**: FastAPI service with measured p50 / p99 latency
-- [ ] **6. Live demo**: replay stream + analyst dashboard
-- [ ] **7. Production touches**: Docker, model versioning, demo GIF
+- [x] **5. Analyst app**: live monitor, payment tester, attack simulator and model
+      performance screens, tested headlessly with Streamlit's AppTest
+- [ ] **6. Scoring API**: FastAPI service with measured p50 / p99 latency
+- [ ] **7. Production touches**: public deployment, Docker, model versioning, demo GIF
 
 ## The data
 
@@ -220,6 +257,9 @@ fraudlens-train --features data/features.csv
 # 4. explain the alerts on the test period (writes reports/explanations.json)
 fraudlens-explain --features data/features.csv
 
+# 5. open the analyst app (builds its own demo world, no files needed)
+fraudlens-app
+
 # run tests and lint
 pytest -v
 ruff check .
@@ -242,9 +282,15 @@ fraudlens/
 │   │   ├── split.py       # train / validation / test by time
 │   │   ├── metrics.py     # false-alarm budget, £ recall, attack recall
 │   │   └── train.py       # baseline vs gradient boosting, save model + CLI
-│   └── explain/
-│       ├── reasons.py     # group Shapley values -> plain-English reasons
-│       └── cli.py         # explain test-period alerts
+│   ├── explain/
+│   │   ├── reasons.py     # group Shapley values -> plain-English reasons
+│   │   └── cli.py         # explain test-period alerts
+│   └── app/
+│       ├── world.py       # demo world: data, model, warmed-up live engine
+│       ├── main.py        # navigation and layout
+│       └── views/         # live monitor, test a payment, simulator, performance
+├── streamlit_app.py       # entry point for Streamlit Community Cloud
+├── docs/screenshots/      # images used in this README
 ├── reports/               # latest training metrics and example explanations
 ├── tests/                 # pytest suite, run on every push by GitHub Actions
 └── pyproject.toml

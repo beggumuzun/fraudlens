@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, deque
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -67,6 +68,14 @@ class OnlineFeatureStore:
 
     def __len__(self) -> int:
         return len(self._cards)
+
+    def snapshot(self, card_ids: list[str]) -> OnlineFeatureStore:
+        """An independent copy holding only these cards (cheap 'what if' experiments)."""
+        copy_ = OnlineFeatureStore()
+        for card_id in card_ids:
+            if card_id in self._cards:
+                copy_._cards[card_id] = deepcopy(self._cards[card_id])
+        return copy_
 
     def compute(self, txn: dict) -> dict:
         """Features for ``txn`` using only what has been seen so far. Does not change state."""

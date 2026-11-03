@@ -113,6 +113,7 @@ def train(
     seed: int = 42,
     valid_frac: float = 0.15,
     test_frac: float = 0.2,
+    importance_repeats: int = 5,
 ) -> dict:
     """Train every candidate, pick the best on validation, return a saveable bundle."""
     split = time_split(features, valid_frac=valid_frac, test_frac=test_frac)
@@ -144,7 +145,7 @@ def train(
         split.valid[FEATURE_COLUMNS],
         split.valid["is_fraud"],
         scoring="average_precision",
-        n_repeats=5,
+        n_repeats=importance_repeats,
         random_state=seed,
     )
     feature_importance = dict(

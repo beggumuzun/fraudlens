@@ -126,13 +126,23 @@ def _normal_transactions(
     return records
 
 
+def build_world(
+    config: GeneratorConfig,
+) -> tuple[list[Customer], MerchantDirectory, np.random.Generator]:
+    """The customers and merchants of a config, exactly as generate_transactions sees them.
+
+    Used by the app's attack simulator to launch new attacks on the same customers.
+    """
+    rng = np.random.default_rng(config.seed)
+    customers = build_customers(config.n_customers, rng)
+    directory = MerchantDirectory(build_merchants(rng))
+    return customers, directory, rng
+
+
 def generate_transactions(config: GeneratorConfig | None = None) -> pd.DataFrame:
     """Build the full labelled dataset, sorted by time. Same config -> identical output."""
     config = config or GeneratorConfig()
-    rng = np.random.default_rng(config.seed)
-
-    customers = build_customers(config.n_customers, rng)
-    directory = MerchantDirectory(build_merchants(rng))
+    customers, directory, rng = build_world(config)
 
     records: list[dict] = []
     for customer in customers:
