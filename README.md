@@ -10,52 +10,45 @@ explains *why* each one was flagged, so a fraud analyst can act on it in seconds
 
 **Live demo: [fraudlens-begum.streamlit.app](https://fraudlens-begum.streamlit.app)**
 
-> Work in progress. See the [roadmap](#roadmap) for what is built so far.
-
 ---
 
-## The app
-
-An analyst app (Streamlit) puts the whole system on screen. It needs no data or model
-files: on first launch it generates its own bank of 2,000 customers, trains the model and
-warms up the live feature engine, which takes about 30 seconds.
+## What it does
 
 ![Live monitor](docs/screenshots/live-monitor.png)
 
 | Screen | What it shows |
 |---|---|
-| **Live monitor** | Unseen payments replayed in time order through the real-time path (online features, model, explanations). A "fraud seismograph" draws every payment as a line whose height is its fraud score on a log scale, so attacks punch through the alert line as red spikes. Alerts queue up with their reasons, next to the ground truth. |
-| **Test a payment** | Pick a real customer, describe a new payment (amount, place, time, device) and get the decision and its reasons instantly, from that card's actual history. |
-| **Attack simulator** | Launch a fresh card-testing, account-takeover or stolen-card attack on any customer, or let a known fraud ring strike again, and see at which payment it is caught and how much money is saved. |
-| **Fraud rings** | Cards linked through shared devices, drawn as a network. Rings are told apart from families sharing a laptop, and each ring's victims point to the shop where their card details leaked. |
-| **Model performance** | Baseline vs gradient boosting, and a slider for the false-alarm budget showing how many frauds, pounds and attacks each setting catches. |
+| **Live monitor** | Unseen payments replayed in time order through the real-time path. Attacks punch through the alert line as red spikes, and each alert says why it fired. |
+| **Test a payment** | Describe a new payment for a real customer and get the decision and its reasons instantly. |
+| **Attack simulator** | Launch a fresh attack on any card and see at which payment it is caught and how much money is saved. |
+| **Fraud rings** | Cards linked through shared devices, rings told apart from families, and the shop where the card details leaked. |
+| **Model performance** | Baseline vs gradient boosting, with a slider for the false-alarm budget. |
 
-<details>
-<summary>More screenshots</summary>
+The app needs no data or model files: on launch it generates its own bank of 2,000
+customers and trains the model. More screenshots are in [`docs/screenshots`](docs/screenshots).
 
-**Test a payment**: a night-time jewellery purchase from Lagos on an unknown device
-![Test a payment](docs/screenshots/test-a-payment.png)
+## Results
 
-**Attack simulator**: a stolen-card spree, caught on its first payment
-![Attack simulator](docs/screenshots/attack-simulator.png)
+Evaluated on 651,379 synthetic payments (5,000 customers, 60 days), split by time, with
+the alert threshold fixed at **at most 1 false alarm per 1,000 genuine payments**.
+Test set: 130,510 payments, 173 fraudulent, 29 separate attacks.
 
-**Fraud rings**: every linked group of cards, rings in red, families in teal
-![Fraud rings](docs/screenshots/fraud-rings.png)
+| Model | PR-AUC | Fraud caught | £ fraud caught | Attacks caught |
+|---|---:|---:|---:|---:|
+| Logistic regression (baseline) | 0.850 | 91.9% | 90.4% | 29 / 29 |
+| **Gradient boosting** | **0.970** | **98.3%** | **98.7%** | **29 / 29** |
 
-**Model performance**
-![Model performance](docs/screenshots/model-performance.png)
+| Live step, one payment | p50 |
+|---|---:|
+| Features (online engine) | 0.06 ms |
+| Model score | 7 ms |
+| Plain-English explanation | 15 ms |
 
-</details>
+Fraud rings, using only alerts the model was not trained on: **7 of 8** rings and **55 of
+62** victim cards found, **no** family wrongly called a ring, and the breached shop
+ranked first for **all 7** rings found.
 
-Risk is shown on a 0-100 scale: the share of genuine payments that look less suspicious.
-Raw fraud probabilities are tiny because fraud is rare, so "riskier than 99.95% of genuine
-payments" is easier to act on than "score 0.004". Alerts start at 99.9.
-
-```bash
-fraudlens-app        # opens http://localhost:8501
-```
-
-## Why this project
+## Why it is hard
 
 Card fraud is rare (well under 1% of payments) but expensive, and a bank has only a few
 milliseconds to decide whether to approve a payment. That makes it a hard engineering
@@ -67,7 +60,7 @@ problem, not just a modelling one:
 - **Decisions must be explainable**: analysts and regulators need a reason, not just a score.
 - **Latency budget**: scoring has to be fast enough to sit inside a payment flow.
 
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
@@ -83,297 +76,44 @@ flowchart LR
     R --> A
 ```
 
+- **Data**: a generator of customers with individual habits, three real-world attack
+  types, fraud rings working from a breached shop, and hard negatives (genuine travel,
+  families sharing a laptop). [Details](docs/data-and-features.md)
+- **Features**: 24 velocity, habit, location, device and network features, built only from
+  each card's past, by two engines (batch for training, online for live scoring) that a
+  test proves agree. [Details](docs/data-and-features.md#features)
+- **Model**: time-based split, threshold set from a false-alarm budget, judged on money
+  and attacks caught, not just accuracy. [Details](docs/model.md)
+- **Explanations**: exact Shapley values over feature groups, turned into sentences such as
+  *"Online payment from a device never used with this card before"*. [Details](docs/explainability.md)
+- **Fraud rings**: a union-find written from scratch links cards through shared devices;
+  model alerts separate rings from families; the victims' history points to the breached
+  shop. [Details](docs/fraud-rings.md)
+
+## What I got wrong, and fixed
+
+- **The explanations exposed a shortcut.** Card-testing alerts were explained by "abroad +
+  digital goods", not by the burst of tiny payments: the model would have missed testers
+  using a UK VPN. I fixed the generator and retrained. [More](docs/explainability.md)
+- **A collapsed baseline was a preprocessing bug.** My first guess (shared family devices)
+  was disproved by an ablation; log-transforming skewed features took the baseline from
+  0.29 to 0.85 PR-AUC. [More](docs/model.md#a-hypothesis-i-got-wrong)
+- **The "network" feature adds nothing.** It looked like the perfect ring signal, but
+  retraining without it gives the same results: ring devices are always new to the card,
+  which the model already catches. The rings are exposed by the graph, not by this
+  feature. [More](docs/fraud-rings.md#a-second-hypothesis-i-got-wrong)
+
+**Limitations.** The data is synthetic, so attacks are cleaner than real fraud, and 29 test
+attacks make "29 / 29" encouraging rather than proof. The evaluation method (time split,
+fixed false-alarm budget, money- and attack-level recall) carries over unchanged to real data.
+
 ## Roadmap
 
-- [x] **1. Synthetic data engine**: customers with individual habits, UK and foreign merchants,
-      three fraud attack types and genuine trips abroad as hard negatives
-- [x] **2. Feature engineering**: 24 velocity, habit, location, device and network features,
-      computed point-in-time by two engines (batch + online) that are tested to agree
-- [x] **3. Modelling**: logistic regression baseline vs gradient boosting; time-based split;
-      alert threshold set from a fixed false-alarm budget
-- [x] **4. Explainability**: plain-English reason codes from exact Shapley values over
-      feature groups; used to find and fix a shortcut the model had learned
-- [x] **5. Analyst app**: live monitor, payment tester, attack simulator and model
-      performance screens, tested headlessly with Streamlit's AppTest
-- [x] **6. Fraud rings**: card-device graph with a hand-written union-find, rings told apart
-      from families by model alerts, and the breached shop found from the victims' history
-- [ ] **7. Drift monitoring**: detect when a new attack pattern degrades the model
-- [ ] **8. Scoring API**: FastAPI service with measured p50 / p99 latency
-
-## The data
-
-Real fraud data is confidential, and public datasets either hide their features (PCA
-components) or lack the behaviour patterns needed for real-time features. FraudLens therefore
-generates its own data, built around attack patterns that banks actually see:
-
-| Scenario | What happens | Signals a good model should pick up |
-|---|---|---|
-| `card_testing` | 5–12 tiny online payments seconds apart, then 1–2 big electronics purchases; half appear to be in the UK (VPN) | burst of payments, new device |
-| `account_takeover` | 2–4 high-value online purchases between 01:00 and 05:00, mostly from abroad (30% via a UK VPN) | new device, unusual hour, amount far above habit |
-| `stolen_card_spree` | 4–8 large in-store purchases in another UK city within a few hours | unusual city, amount far above habit, many shops quickly |
-| `legit_travel` *(not fraud)* | a genuine holiday abroad with normal spending | foreign location, but normal hours and amounts |
-| fraud rings | 60% of online attacks come from rings: one criminal group attacking about 8 cards from the same 1-3 devices, after buying details stolen from one breached shop that every victim paid at days earlier | new device per payment; across cards, the shared devices and the common shop |
-| shared family devices *(not fraud)* | 4% of customers pay online from a laptop or tablet shared with one or two family members | a shared device that is perfectly innocent |
-
-`legit_travel` and shared family devices exist on purpose: without these hard negatives a
-model could simply flag every foreign payment, or every device used by more than one card. The generator is fully reproducible: the same seed always gives the
-same dataset, which is checked in the test suite.
-
-Default dataset: **~130,000 transactions**, 2,000 customers, 30 days, **~0.3% fraud**,
-3 fraud rings.
-
-### Schema
-
-| Column | Description |
-|---|---|
-| `transaction_id` | unique id, in time order |
-| `timestamp` | when the payment happened |
-| `customer_id`, `card_id` | who paid |
-| `merchant_id`, `merchant_category`, `merchant_city` | where they paid (`ONLINE` for e-commerce) |
-| `channel` | `online` or `in_store` |
-| `amount` | GBP |
-| `lat`, `lon` | location of the payment |
-| `device_id` | device used for online payments (empty in store) |
-| `is_fraud`, `fraud_type`, `ring_id` | labels: **never** used as model inputs |
-| `breach_ring_id` | answer key: marks the genuine payment where a ring stole the card's details, used only to check the ring analysis |
-
-## Features
-
-Every feature for a payment is built **only from that card's earlier payments**. A test
-deletes all future data, recomputes everything and checks that no past value changes.
-
-| Group | Examples | Catches |
-|---|---|---|
-| Velocity | payments in last 10 min / 1 h / 24 h, small payments in last 10 min | card testing bursts |
-| Habit | amount ÷ card's average, z-score, how usual this hour is, new category | spending out of character |
-| Location | distance from usual place, distance and **travel speed** since last payment | stolen cards, "impossible travel" |
-| Device | first use of a device, device first seen < 24 h ago | account takeover |
-| Network | how many *other* cards used this device before | meant for fraud rings, but adds nothing measurable (see [the ablation](#fraud-rings)) |
-
-How strongly some of them separate fraud from genuine payments on the default dataset:
-
-| Feature | Genuine (mean) | Fraud (mean) | Ratio |
-|---|---:|---:|---:|
-| `small_txn_count_10m` | 0.002 | 1.81 | ~770× |
-| `is_outside_uk` | 0.005 | 0.61 | ~120× |
-| `txn_count_10m` | 0.03 | 1.84 | ~65× |
-| `device_card_count` | 0.02 | 1.25 | ~58× |
-| `dist_from_usual_km` | 54 | 1,867 | ~35× |
-| `new_device_24h` | 0.03 | 0.67 | ~25× |
-| `amount_to_avg_ratio` | 1.10 | 4.70 | ~4× |
-
-No single feature is enough on its own (genuine customers also travel abroad and buy
-expensive things), which is why a model that combines them is needed. That is Phase 3.
-
-### Two engines, one definition
-
-| | Batch engine | Online engine |
-|---|---|---|
-| Used for | building the training set | scoring a live payment |
-| How | vectorised pandas over the whole history | small running state per card |
-| Speed | ~130k payments in ~4 s | **p50 0.06 ms, p99 0.14 ms per payment** |
-
-Running two implementations of the same logic is a well-known source of
-*training/serving skew*. FraudLens guards against it with a parity test that replays a
-whole dataset through the online engine and requires every feature to match the batch
-engine. The test earned its place on day one: it caught a bug where the online engine
-computed `~True` (which is `-2` in Python) instead of `False`.
-
-Generated data is well-behaved, so hand-made cases cover what it never produces, each
-run through both engines:
-
-- **Ties.** Two payments at the same second are ordered by `transaction_id` in both engines.
-- **Late payments.** A payment that arrives older than the latest one already recorded,
-  on any card, is rejected (`OutOfOrderError`) instead of silently producing wrong
-  features. The check is global because shared devices link cards: a late payment on one
-  card would change another card's device count after the fact.
-- **Online payments with no device ID** count as one unknown device per card in both
-  engines, kept separate from in-store payments, so the first one is always "new".
-- **Rounding noise.** Five payments of exactly £0.10 have no spread, so a £0.11 payment
-  gets a z-score of 0. The old formula's float cancellation gave it +50.
-
-Latency figures come from `fraudlens-bench` ([`reports/benchmark.json`](reports/benchmark.json)),
-run on a 2-core cloud machine. The quick timing inside `reports/metrics.json` is taken
-during training, alongside other work, and is noisier.
-
-## Model results
-
-**Setup.** 5,000 customers over 60 days (651,379 payments, 0.15% fraud, 8 fraud rings), split by time:
-train on 1 Jan – 8 Feb, choose the alert threshold on 9 – 17 Feb, report on 18 Feb – 1 Mar.
-The model never sees the future during training.
-
-**The rule.** Analysts can only review so many alerts and every false alarm blocks a genuine
-customer's card. So the threshold is set to allow **at most 1 false alarm per 1,000 genuine
-payments** (chosen on the validation weeks), and models are compared at that fixed budget.
-
-Test set (130,510 payments, 173 fraudulent, 29 separate attacks):
-
-| Model | PR-AUC | Fraud payments caught | £ fraud caught | Attacks caught | Alert precision |
-|---|---:|---:|---:|---:|---:|
-| Logistic regression (baseline) | 0.850 | 91.9% | 90.4% | 29 / 29 | 49% |
-| **Gradient boosting** | **0.970** | **98.3%** | **98.7%** | **29 / 29** | **55%** |
-
-- Gradient boosting wins because fraud lives in *combinations* ("far from home **and** a new
-  device **and** at night") that a linear model cannot express. The gap is largest on
-  stolen-card sprees (96% caught vs 84%) and in how clean the alerts are (PR-AUC 0.97 vs 0.85).
-- Recall by attack type: account takeover 100%, card testing 100%, stolen card spree 95.7%.
-- Most useful features (permutation importance): distance from usual location, device first
-  seen in the last 24 h, merchant category, amount vs habit, money spent in the last hour.
-- Scoring one payment takes about **7 ms** (p50, `fraudlens-bench`, 2-core cloud machine).
-
-**A hypothesis I got wrong.** After fraud rings and shared family devices were added to
-the data, the baseline collapsed from 0.67 to 0.29 PR-AUC while gradient boosting held
-steady. My first guess was that "several cards on one device" confused it, being
-suspicious for a ring but normal for a family. An ablation disproved that:
-
-| Baseline variant | PR-AUC |
-|---|---:|
-| As it was | 0.29 |
-| Without the shared-device feature | 0.26 |
-| **With log-transformed skewed features** | **0.85** |
-
-The real cause was preprocessing. Counts, amounts and distances are heavily skewed (2 km
-or 5,000 km), and a linear model, with one weight per feature, gets dominated by the
-extremes. Applying `log1p` before scaling is standard practice for linear models, so
-the baseline now does it. Gradient boosting is unaffected (trees only care about the
-order of values) and still wins, but now against a fair opponent.
-
-**Which model the app serves.** On the app's much smaller demo world (2,000 customers,
-45 days, 13 attacks in its test weeks) the baseline actually comes out slightly ahead:
-0.935 vs 0.932 PR-AUC on validation, 0.906 vs 0.847 on test, and 13 of 13 attacks caught
-against 12 of 13. With so few attacks, one attack is worth 8 percentage points, so these
-gaps are noise in either direction. The 60-day evaluation above (29 attacks, 130,510 test
-payments) is the more reliable guide, and there gradient boosting wins clearly. The app
-therefore serves gradient boosting, and its performance screen shows both models' demo
-numbers and says why.
-
-Full numbers are in [`reports/metrics.json`](reports/metrics.json).
-
-**Limitations, honestly.** The data is synthetic, so the attack patterns are cleaner than
-real fraud, where criminals adapt to the model. The test set holds only 29 attacks, so
-"29 / 29" is encouraging rather than proof. The value of this phase is the evaluation
-method (time split, fixed false-alarm budget, money- and attack-level recall), which carries
-over unchanged to real data.
-
-## Explainability
-
-Every alert comes with plain-English reasons, ranked by how much of the suspicion each
-one carries. A real example from the test period:
-
-```
-T0553371  account takeover by a fraud ring  score 0.999
-   42%  Online payment from a device never used with this card before
-   25%  Paid 258 km from the card's usual area
-   18%  Merchant category: digital goods
-```
-
-**How.** Features are grouped by meaning (location, velocity, amount, device, network,
-timing, merchant, history). The payment is re-scored for all 2⁸ = 256 mixes of "this
-group has its real value" and "this group looks like a typical genuine payment", and
-each group receives its exact **Shapley value**: its fair share of the score. Explaining
-one payment takes about 15 ms (p50, `fraudlens-bench`).
-
-Why not simply switch off one signal at a time? Fraud is an *AND* of signals. Making
-either "new device" or "abroad" look normal drops the score to almost nothing, so both
-would look 99% responsible. Shapley values split the credit fairly, and a unit test
-checks exactly this on a model whose answer is known by hand.
-
-**What the explanations revealed.** The first version of the explainer showed that
-every card-testing alert was explained by *"paid from abroad + digital goods"*, not by
-the burst of tiny payments. The model had learned a shortcut: in the generated data,
-card testers were always abroad, so it would have missed any tester using a UK VPN.
-The generator was fixed (half of card testers and 30% of account takeovers now appear
-in the UK), the model retrained, and the reasons now match the attacks:
-
-| Alert type | Top reason: device | velocity | location | amount |
-|---|---:|---:|---:|---:|
-| card testing | 32 | **40** | 0 | 0 |
-| account takeover | **30** | 0 | 1 | 0 |
-| stolen card spree | 0 | 10 | **57** | 0 |
-| false alarm (genuine) | 0 | 6 | **128** | 3 |
-
-The last row is useful too: most false alarms are genuine customers spending more
-than usual in another UK city, which looks exactly like a stolen-card spree. That
-points to the next improvement: features that know about a customer's travel history.
-
-**A sentence that was not true.** The example above used to read *"42% This device has
-already been used with 6 other cards"*. The shared-device count lived in the device
-group, and the sentence was chosen by the feature's value, not by its contribution.
-Every ring payment is *also* from a brand-new device, and that is what the model
-actually reacted to: setting the shared-device count to zero leaves the score unchanged
-at 0.9985. The count now has its own "network" group, so it only gets a sentence when it
-really carries at least 10% of the score. Here it carries 0.3%. A unit test checks
-the situation with a model whose answer is known by hand: a payment that is both from a
-new device and from a shared one, scored by a model that only reacts to the new device.
-
-Example explanations are in [`reports/explanations.json`](reports/explanations.json).
-
-## Fraud rings
-
-Criminals rarely attack one card. A ring buys a batch of card details, usually stolen
-from one breached shop, and works through them from a handful of devices. FraudLens
-looks for that pattern in three steps.
-
-**1. Link cards through devices.** Every online payment links a card to a device. A
-**union-find** (disjoint-set) structure, written from scratch with path compression and
-union by size, joins these links into groups of cards connected directly or through a
-chain of shared devices. It is checked against breadth-first search on random graphs.
-
-**2. Tell rings from families.** Structure alone is not enough: three people sharing a
-family laptop form exactly the same shape as a small ring. A group is called a ring only
-when the model has flagged at least two of its cards. The graph and the model each catch
-what the other misses.
-
-**3. Find the leak.** For each ring, which shop did the victims pay at in the 30 days
-before their first alert, far more often than customers in general? That shop is the
-likely point of compromise.
-
-Results on the 60-day dataset (8 real rings, 62 victim cards, 35 linked groups). The
-headline column uses only alerts the model was **not** trained on (validation and test
-weeks). On its training weeks the model has seen the answers, so the retrospective
-column is an upper bound, shown for comparison:
-
-| | Out of sample | Retrospective (all alerts) |
-|---|---|---|
-| Rings found | **7 of 8** | 8 of 8 |
-| Victim cards recovered | **55 of 62** | 62 of 62 |
-| Family groups wrongly called a ring | **0 of 27** | 1 of 27 |
-| Breached shop ranked first | **7 of 7** rings found | 8 of 8 |
-
-The breached shop is checked against the generator's answer key (`breach_ring_id`), and
-a test asserts it. Out of sample, every flagged card of every ring had paid at that shop
-in the 30 days before its first alert, **3.4x to 9.9x** more often than customers
-overall. The missed ring struck only one of its victims after the training weeks,
-and one flagged card is not enough: a group needs two before it is called a ring.
-
-The alerts are used exactly as an analyst would get them, mistakes included. Of the 27
-victim cards flagged out of sample, 3 were flagged only on genuine payments: their
-attacks had ended in the training weeks, and a later false alarm happened to hit them.
-They still help link their ring. Real alerts are just as mixed, which is why a ring
-needs at least two flagged cards and is confirmed by the shared shop, not by one alert.
-
-**A second hypothesis I got wrong.** The network feature (how many other cards used this
-device before) looked like the perfect real-time ring signal: 53x higher on fraud than
-on genuine payments in the 60-day data. An ablation (`fraudlens-ablation`) retrained the
-model without it:
-
-| Test set, gradient boosting | With the feature | Without it |
-|---|---:|---:|
-| PR-AUC | 0.970 | 0.970 |
-| Fraud payments caught | 98.3% | 98.3% |
-| Ring attacks caught on their first payment | 11 of 11 | 11 of 11 |
-
-It adds nothing. Ring devices are always new to the victim's card, and the model already
-catches new devices, so the extra signal is redundant on this data. The feature stays in
-because it costs almost nothing, but the README no longer claims it catches rings. The rings are exposed by the graph, not by
-this feature. Full numbers are in [`reports/ablation.json`](reports/ablation.json).
-
-Honest caveats: a ring's group can also pull in a victim's family members, who share
-the victim's own device; the app shows them as linked but not flagged. And in real data
-rings hide behind fresh devices, so production systems link cards through many more
-signals (IP addresses, shipping addresses, emails) than this synthetic one does.
-
-Full report: [`reports/rings.json`](reports/rings.json).
+- [x] Synthetic data engine, point-in-time features, model comparison
+- [x] Explainable alerts and the analyst app
+- [x] Fraud-ring detection with a hand-written union-find
+- [ ] Drift monitoring: detect when a new attack pattern degrades the model
+- [ ] Scoring API: FastAPI service with measured p50 / p99 latency
 
 ## Quick start
 
@@ -443,7 +183,7 @@ fraudlens/
 │       ├── main.py        # navigation and layout
 │       └── views/         # live monitor, test a payment, simulator, rings, performance
 ├── streamlit_app.py       # entry point for Streamlit Community Cloud
-├── docs/screenshots/      # images used in this README
+├── docs/                  # detailed write-ups and screenshots
 ├── reports/               # metrics, explanations, rings, ablation, benchmark
 ├── tests/                 # pytest suite, run on every push by GitHub Actions
 └── pyproject.toml
